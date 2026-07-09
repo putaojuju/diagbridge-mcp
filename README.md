@@ -46,10 +46,12 @@ This repository currently contains the first-phase foundation:
 
 - Monorepo structure.
 - Security and architecture documentation.
+- Progressive Autonomy and responsibility model documentation.
 - MCP tool schema draft.
-- Permission and risk model.
+- Action Registry, permission model, and risk model.
 - Gateway, Local MCP Relay, and Windows Agent skeletons.
 - Mock-only read diagnostics.
+- Policy unit tests for high-risk boundaries.
 
 The first phase intentionally does **not** execute real repair commands, arbitrary shell commands, registry edits, credential reads, or administrator actions.
 
@@ -106,6 +108,8 @@ diagbridge-mcp/
     permission-model.md
     tool-policy.md
     approval-flow.md
+    autonomy-model.md
+    responsibility-model.md
   apps/
     gateway/
     agent-windows/
@@ -126,6 +130,7 @@ The initial implementation uses TypeScript and Node.js so the MCP server, gatewa
 ```bash
 npm install
 npm run check
+npm test
 npm run dev:gateway
 npm run dev:mcp-local
 npm run dev:agent-windows
@@ -142,6 +147,8 @@ Security design is part of the product, not an afterthought. See:
 - [`docs/permission-model.md`](./docs/permission-model.md)
 - [`docs/tool-policy.md`](./docs/tool-policy.md)
 - [`docs/approval-flow.md`](./docs/approval-flow.md)
+- [`docs/autonomy-model.md`](./docs/autonomy-model.md)
+- [`docs/responsibility-model.md`](./docs/responsibility-model.md)
 
 ## License
 
