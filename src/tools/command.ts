@@ -72,7 +72,7 @@ export async function runCommand(input: Record<string, unknown>): Promise<Comman
       reject(error);
     });
 
-    child.on("close", (exitCode: number | null, signal: string | null) => {
+    child.on("close", (exitCode: number | null, signal: NodeJS.Signals | null) => {
       clearTimeout(timer);
       resolvePromise({ command, args, exitCode, signal, stdout, stderr, timedOut });
     });
