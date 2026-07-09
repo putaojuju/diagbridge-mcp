@@ -1,10 +1,11 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { SessionContext } from "@diagbridge/core";
+import type { ActionRequest, SessionContext } from "@diagbridge/core";
 import { collectMockDiagnosticReport, getMockSystemOverview, runMockNetworkDiagnosis } from "@diagbridge/diagnostics";
-import { evaluateToolRequest } from "@diagbridge/policy";
+import { createMockApprovalRecord, evaluateToolRequest } from "@diagbridge/policy";
 import { listMcpTools } from "@diagbridge/protocol";
 import { redactText } from "@diagbridge/redaction";
 
+const host = "127.0.0.1";
 const port = Number(process.env.PORT ?? 8787);
 
 const mockSessionContext: SessionContext = {
@@ -33,6 +34,21 @@ const mockSessionContext: SessionContext = {
 type JsonObject = Record<string, unknown>;
 type ToolHandler = (args: JsonObject) => unknown | Promise<unknown>;
 
+function objectParam(value: unknown): JsonObject {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : {};
+}
+
+function buildMockActionRequest(args: JsonObject): ActionRequest {
+  return {
+    actionType: String(args.actionType ?? ""),
+    params: objectParam(args.params),
+    sessionId: mockSessionContext.sessionId,
+    requestedBy: mockSessionContext.entryPoint,
+    diagnosticIntent: typeof args.diagnosticIntent === "string" ? args.diagnosticIntent : undefined,
+    createdAt: new Date().toISOString(),
+  };
+}
+
 const handlers: Record<string, ToolHandler> = {
   get_system_overview: () => getMockSystemOverview(),
   run_network_diagnosis: (args) => runMockNetworkDiagnosis(String(args.targetHost ?? "example.com")),
@@ -59,18 +75,23 @@ const handlers: Record<string, ToolHandler> = {
     actionId: String(args.actionId ?? ""),
     explanation: "This is a mock explanation. Phase 1 does not execute pending actions.",
   }),
-  request_action_approval: (args) => ({
-    mock: true,
-    approvalId: `mock-approval-${Date.now()}`,
-    title: String(args.title ?? "Mock approval"),
-    plainLanguageSummary: String(args.plainLanguageSummary ?? "No summary supplied."),
-    note: "This records mock consent only. It is not execution authority.",
-  }),
+  request_action_approval: (args) => {
+    const actionRequest = buildMockActionRequest(args);
+    const approvalRecord = createMockApprovalRecord(actionRequest, mockSessionContext);
+    return {
+      mock: true,
+      actionType: actionRequest.actionType,
+      params: actionRequest.params,
+      approvalRecord,
+      note: "This is a mock ApprovalRecord for a structured action. It is not a raw command approval.",
+    };
+  },
   execute_approved_action: (args) => ({
     mock: true,
-    approvalId: String(args.approvalId ?? ""),
+    actionType: String(args.actionType ?? ""),
+    actionHash: objectParam(args.approvalRecord).actionHash,
     executed: false,
-    note: "Phase 1 never executes approved actions. This is a non-execution mock result.",
+    note: "Phase 1 validates approval metadata but never executes approved actions.",
   }),
   collect_diagnostic_report: (args) => collectMockDiagnosticReport(Array.isArray(args.sections) ? args.sections.map(String) : undefined),
 };
@@ -105,7 +126,8 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && req.url === "/health") {
       sendJson(res, 200, {
         ok: true,
-        service: "diagbridge-gateway",
+        service: "diagbridge-mock-http-gateway",
+        bindHost: host,
         mockOnly: true,
         hiddenMode: false,
         rawShell: false,
@@ -146,7 +168,7 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(port, () => {
-  console.log(`DiagBridge mock gateway listening on http://127.0.0.1:${port}`);
-  console.log("Phase 1 safety: mock-only, visible, non-admin, no raw shell.");
+server.listen(port, host, () => {
+  console.log(`DiagBridge mock HTTP gateway listening on http://${host}:${port}`);
+  console.log("Phase 1 safety: mock-only, visible, non-admin, no raw shell, no real Windows operations.");
 });
