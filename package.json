@@ -16,9 +16,9 @@
     "dev:agent-windows": "tsx apps/agent-windows/src/index.ts"
   },
   "devDependencies": {
-    "@types/node": ">=20.0.0",
-    "tsx": ">=4.0.0",
-    "typescript": ">=5.0.0",
-    "vitest": ">=1.0.0"
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.0"
   }
 }
