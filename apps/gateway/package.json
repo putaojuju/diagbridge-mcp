@@ -1,0 +1,16 @@
+{
+  "name": "@diagbridge/gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@diagbridge/core": "workspace:*",
+    "@diagbridge/diagnostics": "workspace:*",
+    "@diagbridge/policy": "workspace:*",
+    "@diagbridge/protocol": "workspace:*",
+    "@diagbridge/redaction": "workspace:*"
+  }
+}
