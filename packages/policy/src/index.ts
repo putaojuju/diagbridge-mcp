@@ -73,13 +73,21 @@ function normalizeWindowsPath(path: string): string {
   return path.replaceAll("/", "\\").toLowerCase();
 }
 
+function stripTrailingBackslashes(path: string): string {
+  return path.replace(/\\+$/u, "");
+}
+
 function pathLooksSensitive(path: string): boolean {
-  return SENSITIVE_PATH_PATTERNS.some((pattern) => pattern.test(path));
+  const normalizedPath = normalizeWindowsPath(path);
+  return SENSITIVE_PATH_PATTERNS.some((pattern) => pattern.test(normalizedPath));
 }
 
 function pathIsWithinAllowedRoots(path: string, request: ToolRequest): boolean {
-  const normalizedPath = normalizeWindowsPath(path);
-  return request.context.allowedRoots.some((root) => normalizedPath.startsWith(normalizeWindowsPath(root.path)));
+  const normalizedPath = stripTrailingBackslashes(normalizeWindowsPath(path));
+  return request.context.allowedRoots.some((root) => {
+    const normalizedRoot = stripTrailingBackslashes(normalizeWindowsPath(root.path));
+    return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}\\`);
+  });
 }
 
 function parseRisk(value: unknown, fallback: RiskLevel): RiskLevel {
