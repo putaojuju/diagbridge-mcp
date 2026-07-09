@@ -1,10 +1,34 @@
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 8787;
+export const DEFAULT_HTTP_MCP_PORT = 8787;
 
-export const TOOL_NAMES = ["system_info", "list_dir", "read_file", "write_file", "run_command"] as const;
+export const TOOL_NAMES = [
+  "system_info",
+  "list_dir",
+  "read_file",
+  "write_file",
+  "run_command",
+  "drive_inventory",
+  "junk_candidates",
+  "windows_event_summary",
+] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
 
-export const DEFAULT_ENABLED_TOOLS: ToolName[] = ["system_info", "list_dir", "read_file"];
+export const DEFAULT_ENABLED_TOOLS: ToolName[] = [
+  "system_info",
+  "list_dir",
+  "read_file",
+  "drive_inventory",
+  "junk_candidates",
+  "windows_event_summary",
+];
+
+export const HTTP_CONNECTOR_TOOL_NAMES: ToolName[] = [
+  "system_info",
+  "drive_inventory",
+  "junk_candidates",
+  "windows_event_summary",
+];
 
 export interface BridgeConfig {
   host: string;
@@ -64,5 +88,20 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     visible: true,
     runCommandEnabled: enabledTools.includes("run_command"),
     writeFileEnabled: enabledTools.includes("write_file"),
+  };
+}
+
+export function loadHttpMcpConfig(env: Record<string, string | undefined> = process.env): BridgeConfig {
+  const port = Number(env.DIAGBRIDGE_HTTP_PORT ?? env.DIAGBRIDGE_PORT ?? DEFAULT_HTTP_MCP_PORT);
+  return {
+    host: env.DIAGBRIDGE_HTTP_HOST ?? env.DIAGBRIDGE_HOST ?? DEFAULT_HOST,
+    port: Number.isFinite(port) ? port : DEFAULT_HTTP_MCP_PORT,
+    sessionToken: env.DIAGBRIDGE_SESSION_TOKEN,
+    enabledTools: [...HTTP_CONNECTOR_TOOL_NAMES],
+    auditLogPath: env.DIAGBRIDGE_AUDIT_LOG ?? ".diagbridge-audit.jsonl",
+    cwd: env.DIAGBRIDGE_CWD ?? process.cwd(),
+    visible: true,
+    runCommandEnabled: false,
+    writeFileEnabled: false,
   };
 }
