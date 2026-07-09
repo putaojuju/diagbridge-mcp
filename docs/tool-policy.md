@@ -10,6 +10,7 @@ DiagBridge exposes structured diagnostic tools rather than arbitrary command exe
 - Treat repairs as Yellow or higher.
 - Treat system changes as Orange.
 - Treat credential access, hidden control, and raw shell execution as Red.
+- Compute risk from Action Registry and Policy Engine, not from AI-provided arguments.
 
 ## Phase 1 tool surface
 
@@ -21,9 +22,32 @@ DiagBridge exposes structured diagnostic tools rather than arbitrary command exe
 | `read_text_file` | Blue | Mock | Must be allowed-root bounded and redacted later |
 | `search_logs` | Blue | Mock | Must have size limits and redaction later |
 | `explain_pending_action` | Green | Mock | Converts action to plain language |
-| `request_action_approval` | Yellow | Mock | Creates consent request, not execution authority |
-| `execute_approved_action` | Yellow | Mock | Does not execute real actions in phase 1 |
+| `request_action_approval` | Computed from action | Mock | Accepts `actionType` and `params`; does not trust AI-supplied `risk` |
+| `execute_approved_action` | Computed from action | Mock | Requires an `ApprovalRecord`; never treats an ID prefix as execution authority |
 | `collect_diagnostic_report` | Blue | Mock | Bundle metadata only in phase 1 |
+
+## Action-based approval
+
+Approval requests are structured around actions:
+
+```json
+{
+  "actionType": "flush_dns_cache",
+  "params": {},
+  "diagnosticIntent": "Try a low-risk network repair after read-only diagnosis"
+}
+```
+
+The AI may provide diagnostic intent, action type, and parameters. It may not provide the final risk as an authority.
+
+Policy Engine and Action Registry decide:
+
+- Risk level.
+- Approval kind.
+- Reversibility.
+- Scope.
+- Whether the action is blocked.
+- Whether the action can become an approval prompt.
 
 ## Forbidden default tools
 
@@ -52,6 +76,9 @@ Each tool call should return or log a policy decision with:
 - `reasons`
 - `redactions`
 - `mockOnly`
+- `actionType`
+- `actionHash`
+- `scope`
 
 Deny decisions should be explicit and explainable.
 
@@ -71,6 +98,8 @@ Requests are Red if they involve:
 - Hidden persistence.
 - Remote script execution.
 - Opaque commands that cannot be explained to the diagnosed user.
+
+Red requests must be blocked by policy. They must not be converted into normal user approval prompts.
 
 ## Expert mode reservation
 
