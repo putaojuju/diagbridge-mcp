@@ -1,87 +1,47 @@
 # Threat Model
 
-DiagBridge is designed for trusted human collaboration, but it must assume AI agents, helpers, network peers, and prompts can make unsafe requests.
+DiagBridge MCP has a narrow threat model. It is a visible local MCP bridge for trusted sessions, not a sandbox or enterprise security product.
 
-## Assets to protect
+## Assumptions
 
-- The diagnosed user's consent and control.
-- Personal files and private logs.
-- Credentials, browser data, tokens, SSH keys, API keys, wallets, and cookies.
-- System integrity and availability.
-- Audit logs and approval records.
-- The reputation of the project as a transparent diagnostic tool rather than a remote-control backdoor.
+- The user intentionally starts the bridge.
+- The session is visible to the user.
+- The MCP host provides approval prompts and tool policy.
+- The bridge binds to `127.0.0.1` by default.
+- Protected requests require a session token.
+- `write_file` and `run_command` are disabled by default.
 
-## Primary actors
+## Main risks
 
-| Actor | Role | Trust level |
-| --- | --- | --- |
-| Diagnosed user | Permission owner using the affected PC | Highest local authority |
-| Helper | Friend or technician helping the user | Trusted but bounded |
-| AI agent | Temporary diagnostic guest | Untrusted until constrained by policy |
-| Gateway operator | Hosts gateway infrastructure | Privileged service role |
-| Malicious prompt/source | Attempts to steer the AI into unsafe actions | Untrusted |
-| Local malware | May try to abuse the agent if present | Hostile |
+| Risk | Mitigation |
+| --- | --- |
+| Unwanted local access | Session token required for protected endpoints. |
+| Bridge left running | `/disconnect` endpoint and visible console process. |
+| Host approves too much automation | Host policy is responsible; DiagBridge labels tools honestly. |
+| Accidental destructive tool use | `write_file` and `run_command` disabled by default and marked destructive. |
+| Command execution misuse | `run_command` is marked destructive + open-world and must be explicitly enabled. |
+| Audit blind spots | Basic JSONL audit records tool, parameter summary, time, and status. |
 
-## Abuse cases
+## Out of scope
 
-### AI asks for a raw shell
+DiagBridge does not attempt to solve:
 
-A malicious or confused AI may request `run_powershell(command)`, `cmd.exe`, encoded scripts, WMI command execution, or registry edits.
+- Full command safety analysis.
+- Sandboxing arbitrary commands.
+- Enterprise RMM policy.
+- Malware containment.
+- Host compromise.
+- Tamper-proof logging.
+- Preventing a fully trusted local user from enabling powerful tools.
 
-Mitigation: no default raw shell tool exists. Unknown shell-like tool names are denied by policy. Any future expert mode must be disabled by default and policy-gated.
+## Project red lines
 
-### User is tricked into approving opaque code
+DiagBridge should not add:
 
-A normal user cannot reasonably evaluate arbitrary PowerShell.
-
-Mitigation: approval is not the primary safety boundary. The policy engine must block dangerous actions before the user sees an approval button. Approval text must explain human-level impact, not code.
-
-### Credential collection disguised as diagnostics
-
-Requests may target browser profiles, SSH directories, token files, password stores, cookie databases, wallet files, or cloud credentials.
-
-Mitigation: sensitive path and content patterns are Red and denied by default. Redaction is applied to diagnostic output.
-
-### Silent or persistent remote control
-
-An attacker may try to make the agent invisible or persistent.
-
-Mitigation: hidden mode and stealth persistence are non-goals and rejected features. The Windows Agent must remain visible and revocable.
-
-### Overbroad file access
-
-A tool may try to read arbitrary paths such as the full user profile or application data.
-
-Mitigation: file reads require allowed roots, size limits, risk classification, and redaction.
-
-### Session confusion
-
-One helper or AI session may accidentally act on another user's computer.
-
-Mitigation: gateway and agent must track session IDs, diagnosed-user presence, device labels, and consent state.
-
-### Gateway compromise
-
-A compromised gateway could try to forward unsafe operations.
-
-Mitigation: the Windows Agent should also enforce local policy and never expose a raw command channel. Defense in depth is required in later phases.
-
-## Out of scope for phase 1
-
-- Real remote command execution.
-- System repair operations.
-- Administrator elevation.
-- Registry modification.
-- Service installation.
-- Browser profile inspection.
-- Credential discovery.
-- Permanent unattended remote access.
-
-## Security invariants
-
-- No hidden run mode.
-- No default admin.
-- No raw shell.
-- No credential reads.
-- No execution without policy approval.
-- No approval prompt that shifts script-understanding responsibility to ordinary users.
+- Hidden run mode.
+- UAC bypass.
+- Silent persistence.
+- Credential-harvesting-specific tools.
+- Disguised system service behavior.
+- Approval-bypass behavior.
+- Anti-security or anti-detection behavior.

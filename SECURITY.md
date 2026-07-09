@@ -1,46 +1,29 @@
 # Security Policy
 
-DiagBridge is a remote diagnostics collaboration tool. Security and user consent are core product requirements, not optional features.
+DiagBridge MCP is a visible local bridge, not a full security platform.
 
-## Supported versions
+The MCP host is responsible for user-facing tool approval, automation level, and allow/deny policy. DiagBridge keeps a smaller responsibility: visible operation, temporary session token, disconnect state, audit logging, localhost default binding, and honest tool metadata.
 
-The project is pre-release. Only the `main` branch is considered supported for security review until the first tagged release.
+## Red lines
 
-## Reporting a vulnerability
+The project does not accept features that add:
 
-Please use GitHub Security Advisories when available. If public disclosure would expose users to risk, do not open a public issue with exploit details.
+- Hidden run mode.
+- UAC bypass.
+- Silent persistence.
+- Credential-collection-specific tools.
+- Browser password or cookie harvesting helpers.
+- SSH key, API key, token, or wallet harvesting helpers.
+- System-service disguise or fake system component naming.
+- Bypassing or suppressing the MCP host's approval mechanism.
+- Anti-security-tool or anti-detection behavior.
 
-A useful report should include:
+## `run_command`
 
-- Affected commit or version.
-- Reproduction steps.
-- Expected and actual behavior.
-- Impact on consent, authorization, credential exposure, auditability, or command execution.
-- Whether the issue can be triggered remotely or by an AI agent prompt.
+`run_command` is intentionally labeled destructive and open-world. It should be disabled by default and enabled only by a user who understands the MCP host's approval behavior.
 
-## Security red lines
+DiagBridge does not claim that commands are safe. The host and user configuration decide whether the tool should be available.
 
-The project must not accept features that add:
+## Reporting issues
 
-- Hidden or stealth run modes.
-- Persistence intended to survive user removal or hide from the user.
-- Default administrator execution.
-- UAC bypass, privilege escalation, or security-product bypass.
-- A normal exposed `run_powershell(command)` or equivalent raw shell tool.
-- Browser password, cookie, SSH key, API key, private key, wallet, token, or credential harvesting.
-- Remote script execution without a policy decision and explicit diagnostic purpose.
-- Approval prompts that ask non-technical users to approve opaque code.
-
-## Security model summary
-
-- The diagnosed user is the permission owner.
-- AI agents are temporary guests.
-- Tools are structured and risk-classified.
-- The policy engine is the primary safety boundary.
-- Approval is a consent signal, not a substitute for policy enforcement.
-- High-risk and credential-related requests are denied by default.
-- Every sensitive action should be auditable and revocable.
-
-## Phase 1 limitations
-
-The current code is intentionally mock-first. It does not run real Windows commands, edit the registry, collect credentials, or perform repairs.
+Please report security issues through GitHub Security Advisories if available. For public issues, avoid posting exploit details that could harm users.

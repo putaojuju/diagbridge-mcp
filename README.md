@@ -1,155 +1,109 @@
 # DiagBridge MCP
 
-DiagBridge is an **AI-native remote diagnostics bridge** for helping trusted people diagnose Windows computer problems with AI agents such as ChatGPT, Codex, Claude Code, Cursor, and other MCP-capable tools.
+DiagBridge MCP is a visible Windows MCP bridge for trusted, user-authorized computer sessions.
 
-The project is **MCP-first**, **consent-first**, and **safety-default**. It is designed for visible, authorized, auditable, revocable computer diagnostics. It is not a hidden remote-control tool, not a remote shell, and not a way to bypass Windows security boundaries.
+It connects a user's local computer session to trusted MCP-capable AI agents such as ChatGPT, Codex, Claude Code, Cursor, or similar tools. It is intentionally small: it is a bridge, not a sandbox, not an RMM platform, and not a general security judge for every command.
 
-## Project goals
+## What DiagBridge does
 
-- Provide a safe bridge between AI agents and a consenting Windows user who needs help.
-- Support two MCP entry points:
-  - **Remote MCP Server** for ChatGPT Connector style usage.
-  - **Local MCP Relay** for local tools such as Codex, Claude Code, Cursor, and other local AI agents.
-- Keep the diagnosed user as the permanent permission owner.
-- Make every sensitive action visible, explainable, auditable, and revocable.
-- Prefer read-only diagnostics and structured tools over free-form command execution.
-- Build a policy engine that blocks dangerous requests even when an AI or helper asks for them.
+DiagBridge keeps only the bridge responsibilities:
 
-## Non-goals
+- Run visibly.
+- Listen on `127.0.0.1` by default.
+- Use a temporary session token.
+- Provide a disconnect endpoint.
+- Record audit events.
+- Publish honest MCP-style tool metadata.
+- Avoid hidden run modes, UAC bypass, and default administrator assumptions.
 
-DiagBridge is explicitly **not** trying to be:
+## What DiagBridge does not do
 
-- A stealth remote administration tool.
-- A malware-like remote access trojan.
-- A hidden background controller.
-- A default administrator agent.
-- A raw PowerShell, CMD, WMI, or registry backdoor.
-- A credential, cookie, key, wallet, or browser-password collector.
-- A tool that asks non-technical users to understand arbitrary scripts before approving them.
+DiagBridge is not:
 
-## Safety principles
+- A security platform.
+- A sandbox.
+- A malware analysis environment.
+- A hidden remote-control tool.
+- A replacement for MCP host approval.
+- A system that can reliably decide whether every possible command is safe.
 
-1. The diagnosed person is always the permission owner.
-2. The AI agent is only a temporary guest.
-3. Default mode is read-only.
-4. Default mode is non-admin.
-5. No hidden run mode is provided.
-6. No default raw shell is provided.
-7. Browser passwords, cookies, SSH keys, API keys, wallet files, and similar credentials must not be read.
-8. High-risk actions must be blocked or routed through the policy engine and approval flow.
-9. User approval is not the primary safety boundary; the policy engine is.
-10. Approval buttons are for informed consent, not for making ordinary users understand PowerShell.
+The MCP host is expected to handle approval prompts, automation level, allow/deny lists, and user-facing tool policy.
 
-## First-phase status
+## Tools
 
-This repository currently contains the first-phase foundation:
+The first bridge surface is intentionally small:
 
-- Monorepo structure.
-- Security and architecture documentation.
-- Progressive Autonomy and responsibility model documentation.
-- MCP tool schema draft.
-- Action Registry, permission model, and risk model.
-- Gateway, Local MCP Relay, and Windows Agent skeletons.
-- Mock-only read diagnostics.
-- Policy unit tests for high-risk boundaries.
+| Tool | Metadata | Default enabled |
+| --- | --- | --- |
+| `system_info` | read-only | Yes |
+| `list_dir` | read-only | Yes |
+| `read_file` | read-only | Yes |
+| `write_file` | destructive | No |
+| `run_command` | destructive + open-world | No |
 
-The first phase intentionally does **not** execute real repair commands, arbitrary shell commands, registry edits, credential reads, or administrator actions.
+`run_command` is a high-power capability. If enabled, an agent may run local commands through the bridge. The consequences depend on the user's operating system account, the MCP host approval policy, and the command itself.
 
-## High-level architecture
+Recommended default: enable only read-only tools first, then enable `write_file` or `run_command` only for trusted sessions where the host approval settings are understood.
 
-```text
-ChatGPT Connector
-  -> Remote HTTPS MCP Gateway
-  -> DiagBridge Gateway
-  -> Friend Windows Agent
+## Configuration
 
-Codex / Claude Code / Cursor / local AI tools
-  -> Local MCP Relay
-  -> DiagBridge Gateway
-  -> Friend Windows Agent
+Environment variables:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `DIAGBRIDGE_HOST` | `127.0.0.1` | Bind address. Keep local unless you know what you are doing. |
+| `DIAGBRIDGE_PORT` | `8787` | Local HTTP bridge port. |
+| `DIAGBRIDGE_SESSION_TOKEN` | generated at startup | Session token. Requests without it are rejected. |
+| `DIAGBRIDGE_TOOLS` | `system_info,list_dir,read_file` | Comma-separated enabled tools. |
+| `DIAGBRIDGE_CWD` | current directory | Base directory for relative file paths. |
+| `DIAGBRIDGE_AUDIT_LOG` | `.diagbridge-audit.jsonl` | JSONL audit log path. |
+
+Example read-only session:
+
+```bash
+npm run dev
 ```
 
-## First-phase MCP tools
+Example enabling all tools:
 
-The initial tool surface is schema-first and mock-first:
+```bash
+DIAGBRIDGE_TOOLS=system_info,list_dir,read_file,write_file,run_command npm run dev
+```
 
-- `get_system_overview`
-- `run_network_diagnosis`
-- `list_allowed_roots`
-- `read_text_file`
-- `search_logs`
-- `explain_pending_action`
-- `request_action_approval`
-- `execute_approved_action`
-- `collect_diagnostic_report`
+## Local HTTP endpoints
 
-There is deliberately no `run_powershell(command)` tool. If a future free-command capability is explored, it must be treated as disabled-by-default **expert mode**, routed through the policy engine, and never exposed as a normal user approval prompt.
+The current implementation is a minimal local HTTP bridge, not a polished production MCP server yet.
 
-## Risk levels
+- `GET /health` - public local status.
+- `GET /tools` - requires session token.
+- `POST /call` - requires session token.
+- `POST /disconnect` - requires session token and disconnects the session.
 
-| Level | Meaning | First-phase default |
-| --- | --- | --- |
-| Green | Read-only basic diagnostics | Allowed as mock/read-only |
-| Blue | Reads logs or config that may contain private information | Limited, redacted, mock-first |
-| Yellow | Low-risk, explainable, limited repair | Schema only, no real execution |
-| Orange | System-level modification requiring dual confirmation | Blocked in phase 1 |
-| Red | Credential-related, dangerous, unclear, or remote-script execution | Forbidden by default |
-
-## Repository layout
+Authorized requests can use either:
 
 ```text
-diagbridge-mcp/
-  README.md
-  LICENSE
-  SECURITY.md
-  docs/
-    architecture.md
-    threat-model.md
-    permission-model.md
-    tool-policy.md
-    approval-flow.md
-    autonomy-model.md
-    responsibility-model.md
-  apps/
-    gateway/
-    agent-windows/
-    mcp-local/
-  packages/
-    core/
-    protocol/
-    policy/
-    diagnostics/
-    redaction/
-    playbooks/
+Authorization: Bearer <session-token>
+```
+
+or:
+
+```text
+X-DiagBridge-Session-Token: <session-token>
 ```
 
 ## Development
-
-The initial implementation uses TypeScript and Node.js so the MCP server, gateway, relay, and shared type packages can evolve together.
 
 ```bash
 npm install
 npm run check
 npm test
-npm run dev:gateway
-npm run dev:mcp-local
-npm run dev:agent-windows
+npm run dev
 ```
 
-All current app entry points are mock skeletons. They are useful for shaping the protocol and safety model before any real Windows integration is added.
+The project currently uses Node.js TypeScript with a small `src/` tree. Older monorepo-style `apps/` and `packages/` code has been removed from the main line to keep the bridge small and understandable.
 
-## Security posture
+## Security expectations
 
-Security design is part of the product, not an afterthought. See:
+Use DiagBridge only with trusted parties and a trusted MCP host. The host should provide tool approval and policy controls. DiagBridge still refuses to add hidden operation, UAC bypass, silent persistence, credential-harvesting-specific tools, or approval-bypass behavior.
 
-- [`SECURITY.md`](./SECURITY.md)
-- [`docs/threat-model.md`](./docs/threat-model.md)
-- [`docs/permission-model.md`](./docs/permission-model.md)
-- [`docs/tool-policy.md`](./docs/tool-policy.md)
-- [`docs/approval-flow.md`](./docs/approval-flow.md)
-- [`docs/autonomy-model.md`](./docs/autonomy-model.md)
-- [`docs/responsibility-model.md`](./docs/responsibility-model.md)
-
-## License
-
-This project is currently licensed under the MIT License. This can be revisited before the first public release if the project needs stronger copyleft or contributor governance.
+See [`SECURITY.md`](./SECURITY.md) and [`docs/threat-model.md`](./docs/threat-model.md).

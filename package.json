@@ -1,24 +1,15 @@
 {
   "name": "diagbridge-mcp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "MCP-first AI remote diagnostics bridge with consent-first safety boundaries.",
+  "description": "Visible Windows MCP bridge for trusted user-authorized sessions.",
   "type": "module",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
   "scripts": {
-    "check": "tsc -p tsconfig.base.json --noEmit",
-    "test": "vitest run",
-    "dev:gateway": "tsx apps/gateway/src/index.ts",
-    "dev:mcp-local": "tsx apps/mcp-local/src/index.ts",
-    "dev:agent-windows": "tsx apps/agent-windows/src/index.ts"
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "node --experimental-strip-types --test src/bridge.test.ts",
+    "dev": "node --experimental-strip-types src/server.ts"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "tsx": "^4.20.0",
-    "typescript": "^5.8.3",
-    "vitest": "^4.1.0"
+    "typescript": "^5.8.3"
   }
 }
