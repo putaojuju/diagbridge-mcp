@@ -139,17 +139,18 @@ describe("policy safety boundaries", () => {
   it("accepts a structurally valid mock ApprovalRecord but still remains mock-only", () => {
     const actionType = "flush_dns_cache";
     const params = {};
+    const now = new Date();
     const approvalRecord = createMockApprovalRecord(
       {
         actionType,
         params,
         sessionId: activeContext.sessionId,
         requestedBy: activeContext.entryPoint,
-        createdAt: "2026-07-09T00:00:00.000Z",
+        createdAt: now.toISOString(),
       },
       activeContext,
       ["diagnosed-user"],
-      new Date("2026-07-09T00:00:00.000Z"),
+      now,
     );
 
     expect(approvalRecord.actionHash).toBe(calculateActionHash(actionType, params));
