@@ -2,6 +2,9 @@ import type { BridgeConfig, ToolMetadata, ToolName } from "../config.ts";
 import { systemInfo, systemInfoTool } from "./system-info.ts";
 import { listDir, listDirTool, readFile, readFileTool, writeFile, writeFileTool } from "./file-tools.ts";
 import { runCommand, runCommandTool } from "./command.ts";
+import { driveInventory, driveInventoryTool } from "./drive-inventory.ts";
+import { junkCandidates, junkCandidatesTool } from "./junk-candidates.ts";
+import { windowsEventSummary, windowsEventSummaryTool } from "./windows-events.ts";
 
 export const ALL_TOOL_METADATA: Record<ToolName, ToolMetadata> = {
   system_info: systemInfoTool,
@@ -9,6 +12,9 @@ export const ALL_TOOL_METADATA: Record<ToolName, ToolMetadata> = {
   read_file: readFileTool,
   write_file: writeFileTool,
   run_command: runCommandTool,
+  drive_inventory: driveInventoryTool,
+  junk_candidates: junkCandidatesTool,
+  windows_event_summary: windowsEventSummaryTool,
 };
 
 export function getToolMetadata(enabledTools?: ToolName[]): ToolMetadata[] {
@@ -34,5 +40,11 @@ export async function invokeTool(name: ToolName, args: Record<string, unknown>, 
         throw new Error("run_command is disabled by current DiagBridge config");
       }
       return runCommand(args);
+    case "drive_inventory":
+      return driveInventory(args, config.cwd);
+    case "junk_candidates":
+      return junkCandidates(args, config.cwd);
+    case "windows_event_summary":
+      return windowsEventSummary(args);
   }
 }
