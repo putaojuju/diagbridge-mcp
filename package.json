@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "check": "tsc -p tsconfig.base.json --noEmit",
+    "test": "vitest run",
     "dev:gateway": "tsx apps/gateway/src/index.ts",
     "dev:mcp-local": "tsx apps/mcp-local/src/index.ts",
     "dev:agent-windows": "tsx apps/agent-windows/src/index.ts"
@@ -17,6 +18,7 @@
   "devDependencies": {
     "@types/node": ">=20.0.0",
     "tsx": ">=4.0.0",
-    "typescript": ">=5.0.0"
+    "typescript": ">=5.0.0",
+    "vitest": ">=1.0.0"
   }
 }
