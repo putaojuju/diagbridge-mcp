@@ -19,7 +19,7 @@ const TOOL_RISK: Record<DiagnosticToolName, RiskLevel> = {
   collect_diagnostic_report: "blue",
 };
 
-const FORBIDDEN_TOOL_PATTERNS = [
+const FORBIDDEN_UNKNOWN_TOOL_PATTERNS = [
   /powershell/i,
   /cmd/i,
   /shell/i,
@@ -69,13 +69,21 @@ function approvalKindForRisk(risk: RiskLevel): ApprovalKind {
   }
 }
 
+function normalizeWindowsPath(path: string): string {
+  return path.replaceAll("/", "\\").toLowerCase();
+}
+
 function pathLooksSensitive(path: string): boolean {
   return SENSITIVE_PATH_PATTERNS.some((pattern) => pattern.test(path));
 }
 
 function pathIsWithinAllowedRoots(path: string, request: ToolRequest): boolean {
-  const normalizedPath = path.toLowerCase();
-  return request.context.allowedRoots.some((root) => normalizedPath.startsWith(root.path.toLowerCase()));
+  const normalizedPath = normalizeWindowsPath(path);
+  return request.context.allowedRoots.some((root) => normalizedPath.startsWith(normalizeWindowsPath(root.path)));
+}
+
+function parseRisk(value: unknown, fallback: RiskLevel): RiskLevel {
+  return value === "green" || value === "blue" || value === "yellow" || value === "orange" || value === "red" ? value : fallback;
 }
 
 export function evaluateToolRequest(request: ToolRequest): PolicyDecision {
@@ -89,17 +97,17 @@ export function evaluateToolRequest(request: ToolRequest): PolicyDecision {
     });
   }
 
-  if (FORBIDDEN_TOOL_PATTERNS.some((pattern) => pattern.test(request.toolName))) {
-    return decision({
-      allowed: false,
-      risk: "red",
-      requiresApproval: false,
-      approvalKind: "forbidden",
-      reasons: ["The requested tool name looks like raw command execution or credential access."],
-    });
-  }
-
   if (!isDiagnosticToolName(request.toolName)) {
+    if (FORBIDDEN_UNKNOWN_TOOL_PATTERNS.some((pattern) => pattern.test(request.toolName))) {
+      return decision({
+        allowed: false,
+        risk: "red",
+        requiresApproval: false,
+        approvalKind: "forbidden",
+        reasons: ["The requested unknown tool name looks like raw command execution or credential access."],
+      });
+    }
+
     return decision({
       allowed: false,
       risk: "red",
@@ -140,6 +148,42 @@ export function evaluateToolRequest(request: ToolRequest): PolicyDecision {
         requiresApproval: true,
         approvalKind: "dual",
         reasons: ["The requested path is outside the diagnosed user's allowed roots."],
+      });
+    }
+  }
+
+  if (request.toolName === "request_action_approval") {
+    const requestedRisk = parseRisk(request.args.risk, "yellow");
+    if (requestedRisk === "red") {
+      return decision({
+        allowed: false,
+        risk: "red",
+        requiresApproval: false,
+        approvalKind: "forbidden",
+        reasons: ["Red actions must be blocked by policy, not converted into approval prompts."],
+      });
+    }
+
+    if (requestedRisk === "orange") {
+      return decision({
+        allowed: false,
+        risk: "orange",
+        requiresApproval: true,
+        approvalKind: "dual",
+        reasons: ["Orange system-level approvals are not implemented in phase 1."],
+      });
+    }
+  }
+
+  if (request.toolName === "execute_approved_action") {
+    const approvalId = String(request.args.approvalId ?? "");
+    if (!approvalId.startsWith("mock-approval-")) {
+      return decision({
+        allowed: false,
+        risk,
+        requiresApproval: true,
+        approvalKind: "single",
+        reasons: ["Phase 1 only accepts mock approval IDs and never executes real actions."],
       });
     }
   }
