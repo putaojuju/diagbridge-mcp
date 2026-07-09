@@ -105,7 +105,7 @@ export async function readFile(args: Record<string, unknown>, cwd = process.cwd(
     throw new Error(`file is larger than maxBytes (${fileStat.size} > ${maxBytes})`);
   }
 
-  const encoding = typeof args.encoding === "string" ? args.encoding : "utf8";
+  const encoding = (typeof args.encoding === "string" ? args.encoding : "utf8") as BufferEncoding;
   return {
     path: filePath,
     content: await fsReadFile(filePath, encoding),
@@ -116,7 +116,7 @@ export async function readFile(args: Record<string, unknown>, cwd = process.cwd(
 export async function writeFile(args: Record<string, unknown>, cwd = process.cwd()) {
   const filePath = resolveBridgePath(stringArg(args, "path"), cwd);
   const content = stringArg(args, "content");
-  const encoding = typeof args.encoding === "string" ? args.encoding : "utf8";
+  const encoding = (typeof args.encoding === "string" ? args.encoding : "utf8") as BufferEncoding;
 
   if (args.createParents === true) {
     await mkdir(dirname(filePath), { recursive: true });
