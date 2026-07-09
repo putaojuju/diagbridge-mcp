@@ -1,15 +1,18 @@
 {
   "name": "diagbridge-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Visible Windows MCP bridge for trusted user-authorized sessions.",
   "type": "module",
   "scripts": {
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "node --experimental-strip-types --test src/bridge.test.ts",
-    "dev": "node --experimental-strip-types src/server.ts"
+    "dev": "node --experimental-strip-types src/server.ts",
+    "dev:mcp": "node --experimental-strip-types src/mcp-server.ts",
+    "dev:http-mcp": "node --experimental-strip-types src/http-mcp-server.ts"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "typescript": "^5.8.3"
   }
 }
