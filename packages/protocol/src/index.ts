@@ -1,4 +1,4 @@
-import type { DiagnosticToolName, RiskLevel } from "@diagbridge/core";
+import { ACTION_TYPES, type DiagnosticToolName, type RiskLevel } from "@diagbridge/core";
 
 export interface JsonSchemaDraft {
   type: "object";
@@ -14,6 +14,8 @@ export interface McpToolSchemaDraft {
   mockOnly: boolean;
   inputSchema: JsonSchemaDraft;
 }
+
+const actionTypeEnum = [...ACTION_TYPES];
 
 export const MCP_TOOL_SCHEMAS: Record<DiagnosticToolName, McpToolSchemaDraft> = {
   get_system_overview: {
@@ -100,31 +102,46 @@ export const MCP_TOOL_SCHEMAS: Record<DiagnosticToolName, McpToolSchemaDraft> = 
   },
   request_action_approval: {
     name: "request_action_approval",
-    description: "Request diagnosed-user approval for a policy-allowed action. Phase 1 creates mock approvals only.",
+    description: "Request diagnosed-user approval for a structured action. Risk, reversibility, and scope are computed by Action Registry and Policy Engine, not by AI arguments.",
     defaultRisk: "yellow",
     mockOnly: true,
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      required: ["title", "plainLanguageSummary", "risk"],
+      required: ["actionType", "params"],
       properties: {
-        title: { type: "string" },
-        plainLanguageSummary: { type: "string" },
-        risk: { enum: ["green", "blue", "yellow", "orange", "red"] },
+        actionType: { enum: actionTypeEnum },
+        params: { type: "object", additionalProperties: true, default: {} },
+        diagnosticIntent: { type: "string" },
       },
     },
   },
   execute_approved_action: {
     name: "execute_approved_action",
-    description: "Execute a previously approved action. Phase 1 returns a mock non-execution result.",
+    description: "Execute a previously approved structured action. Phase 1 validates approval metadata and returns a mock non-execution result.",
     defaultRisk: "yellow",
     mockOnly: true,
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      required: ["approvalId"],
+      required: ["actionType", "params", "approvalRecord"],
       properties: {
-        approvalId: { type: "string" },
+        actionType: { enum: actionTypeEnum },
+        params: { type: "object", additionalProperties: true, default: {} },
+        approvalRecord: {
+          type: "object",
+          additionalProperties: true,
+          required: ["sessionId", "actionHash", "risk", "approvedBy", "expiresAt", "singleUse"],
+          properties: {
+            id: { type: "string" },
+            sessionId: { type: "string" },
+            actionHash: { type: "string" },
+            risk: { enum: ["green", "blue", "yellow", "orange", "red"] },
+            approvedBy: { type: "array", items: { type: "string" } },
+            expiresAt: { type: "string" },
+            singleUse: { type: "boolean" },
+          },
+        },
       },
     },
   },
