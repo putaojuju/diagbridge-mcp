@@ -4,12 +4,18 @@ import { mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { AuditLog } from "./audit.ts";
-import { DEFAULT_HOST, HTTP_CONNECTOR_TOOL_NAMES, loadConfig, loadHttpMcpConfig } from "./config.ts";
-import { createSession, isRequestAuthorized } from "./session.ts";
+import {
+  DEFAULT_HOST,
+  HTTP_CONNECTOR_TOOL_NAMES,
+  isHttpDevNoAuthEnabled,
+  loadConfig,
+  loadHttpMcpConfig,
+} from "./config.ts";
+import { createSession, isHttpConnectorRequestAuthorized, isRequestAuthorized } from "./session.ts";
 import { listDir, readFile, resolveBridgePath } from "./tools/file-tools.ts";
 import { getToolMetadata } from "./tools/index.ts";
 import { driveInventory } from "./tools/drive-inventory.ts";
-import { junkCandidates } from "./tools/junk-candidates.ts";
+import { DANGEROUS_CLEANUP_ROOTS, junkCandidates } from "./tools/junk-candidates.ts";
 import { windowsEventSummaryTool, windowsEventSummary } from "./tools/windows-events.ts";
 
 test("MCP tool metadata marks read-only and destructive/open-world tools correctly", () => {
@@ -29,8 +35,11 @@ test("MCP tool metadata marks read-only and destructive/open-world tools correct
   assert.equal(metadata.run_command.annotations.openWorldHint, true);
 });
 
-test("HTTP connector defaults only expose read-only diagnostic tools", () => {
+test("HTTP connector defaults only expose the four read-only diagnostic tools", () => {
   assert.deepEqual(HTTP_CONNECTOR_TOOL_NAMES, ["system_info", "drive_inventory", "junk_candidates", "windows_event_summary"]);
+  assert.equal(HTTP_CONNECTOR_TOOL_NAMES.includes("read_file" as never), false);
+  assert.equal(HTTP_CONNECTOR_TOOL_NAMES.includes("write_file" as never), false);
+  assert.equal(HTTP_CONNECTOR_TOOL_NAMES.includes("run_command" as never), false);
   assert.deepEqual(loadHttpMcpConfig({}).enabledTools, HTTP_CONNECTOR_TOOL_NAMES);
   assert.equal(loadHttpMcpConfig({}).writeFileEnabled, false);
   assert.equal(loadHttpMcpConfig({}).runCommandEnabled, false);
@@ -40,6 +49,23 @@ test("default host is localhost", () => {
   assert.equal(DEFAULT_HOST, "127.0.0.1");
   assert.equal(loadConfig({}).host, "127.0.0.1");
   assert.equal(loadHttpMcpConfig({}).host, "127.0.0.1");
+});
+
+test("HTTP connector requires token by default and dev no-auth is explicit", () => {
+  const session = createSession("test-token");
+  const defaultConfig = loadHttpMcpConfig({});
+  const noAuthConfig = loadHttpMcpConfig({ DIAGBRIDGE_HTTP_DEV_NO_AUTH: "1" });
+
+  assert.equal(isHttpDevNoAuthEnabled({}), false);
+  assert.equal(defaultConfig.httpDevNoAuth, false);
+  assert.equal(isHttpConnectorRequestAuthorized({}, session, defaultConfig.httpDevNoAuth), false);
+  assert.equal(isHttpConnectorRequestAuthorized({ authorization: "Bearer test-token" }, session, defaultConfig.httpDevNoAuth), true);
+
+  assert.equal(noAuthConfig.httpDevNoAuth, true);
+  assert.equal(isHttpConnectorRequestAuthorized({}, session, noAuthConfig.httpDevNoAuth), true);
+  assert.deepEqual(noAuthConfig.enabledTools, HTTP_CONNECTOR_TOOL_NAMES);
+  assert.equal(noAuthConfig.writeFileEnabled, false);
+  assert.equal(noAuthConfig.runCommandEnabled, false);
 });
 
 test("missing session token rejects protected requests", () => {
@@ -112,6 +138,13 @@ test("drive_inventory honors maxEntries and maxDepth truncation", async () => {
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("dangerous cleanup roots use corrected Minecraft and Packages paths", () => {
+  assert.ok(DANGEROUS_CLEANUP_ROOTS.includes("%APPDATA%\\.minecraft"));
+  assert.ok(DANGEROUS_CLEANUP_ROOTS.includes("%LOCALAPPDATA%\\Packages"));
+  assert.equal(DANGEROUS_CLEANUP_ROOTS.includes("%APPDATA%\\Roaming\\.minecraft"), false);
+  assert.equal(DANGEROUS_CLEANUP_ROOTS.includes("%APPDATA%\\Local\\Packages"), false);
 });
 
 test("junk_candidates does not delete and returns review_only candidates", async () => {
