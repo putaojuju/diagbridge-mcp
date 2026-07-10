@@ -23,12 +23,23 @@ export const DEFAULT_ENABLED_TOOLS: ToolName[] = [
   "windows_event_summary",
 ];
 
-export const HTTP_CONNECTOR_TOOL_NAMES: ToolName[] = [
+export const LOCAL_MCP_TOOL_NAMES = [
+  "system_info",
+  "list_dir",
+  "read_file",
+  "drive_inventory",
+  "junk_candidates",
+  "windows_event_summary",
+] as const satisfies readonly ToolName[];
+
+export const HTTP_CONNECTOR_TOOL_NAMES = [
   "system_info",
   "drive_inventory",
   "junk_candidates",
   "windows_event_summary",
-];
+] as const satisfies readonly ToolName[];
+
+export type ReadOnlyMcpToolName = (typeof LOCAL_MCP_TOOL_NAMES)[number];
 
 export interface BridgeConfig {
   host: string;
@@ -40,6 +51,7 @@ export interface BridgeConfig {
   visible: true;
   runCommandEnabled: boolean;
   writeFileEnabled: boolean;
+  httpDevNoAuth: boolean;
 }
 
 export interface ToolAnnotations {
@@ -74,6 +86,10 @@ export function parseEnabledTools(value: string | undefined): ToolName[] {
   return parsed.length > 0 ? [...new Set(parsed)] : [...DEFAULT_ENABLED_TOOLS];
 }
 
+export function isHttpDevNoAuthEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.DIAGBRIDGE_HTTP_DEV_NO_AUTH === "1";
+}
+
 export function loadConfig(env: Record<string, string | undefined> = process.env): BridgeConfig {
   const enabledTools = parseEnabledTools(env.DIAGBRIDGE_TOOLS);
   const port = Number(env.DIAGBRIDGE_PORT ?? DEFAULT_PORT);
@@ -88,6 +104,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     visible: true,
     runCommandEnabled: enabledTools.includes("run_command"),
     writeFileEnabled: enabledTools.includes("write_file"),
+    httpDevNoAuth: false,
   };
 }
 
@@ -103,5 +120,6 @@ export function loadHttpMcpConfig(env: Record<string, string | undefined> = proc
     visible: true,
     runCommandEnabled: false,
     writeFileEnabled: false,
+    httpDevNoAuth: isHttpDevNoAuthEnabled(env),
   };
 }
