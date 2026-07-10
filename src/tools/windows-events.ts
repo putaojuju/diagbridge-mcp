@@ -10,22 +10,25 @@ export interface WindowsEventSummaryEntry {
   messageSnippet: string;
 }
 
+export interface WindowsEventCounts {
+  countMeaning: "event_records_not_unique_incidents";
+  applicationCrashEvents: number;
+  unexpectedShutdownEvents: number;
+  hardwareErrorEvents: number;
+  diskErrorEvents: number;
+}
+
 export interface WindowsEventSummaryResult {
   sinceDays: number;
   events: WindowsEventSummaryEntry[];
-  summary: {
-    applicationCrashes: number;
-    unexpectedShutdowns: number;
-    hardwareErrors: number;
-    diskErrors: number;
-  };
+  summary: WindowsEventCounts;
   warning?: string;
 }
 
 export const windowsEventSummaryTool: ToolMetadata = {
   name: "windows_event_summary",
   title: "Windows event summary",
-  description: "Read recent Windows Application/System error events using a fixed read-only query. It does not accept arbitrary commands and does not auto-elevate.",
+  description: "Read recent Windows Application/System error event records using a fixed read-only query. Summary counts are event records, not deduplicated incidents. It does not accept arbitrary commands and does not auto-elevate.",
   inputSchema: {
     type: "object",
     additionalProperties: false,
@@ -70,31 +73,27 @@ function requestedLogs(args: Record<string, unknown>): string[] {
   return filtered.length > 0 ? [...new Set(filtered)] : ["Application", "System"];
 }
 
+export function summarizeWindowsEventRecords(events: WindowsEventSummaryEntry[]): WindowsEventCounts {
+  return {
+    countMeaning: "event_records_not_unique_incidents",
+    applicationCrashEvents: events.filter((event) => event.providerName === "Application Error" || event.providerName === "Windows Error Reporting" || event.eventId === 1000 || event.eventId === 1001).length,
+    unexpectedShutdownEvents: events.filter((event) => event.providerName.includes("Kernel-Power") || event.eventId === 41 || event.eventId === 6008).length,
+    hardwareErrorEvents: events.filter((event) => event.providerName.includes("WHEA") || [17, 18, 19, 20, 47].includes(event.eventId)).length,
+    diskErrorEvents: events.filter((event) => /disk|ntfs|storahci|stornvme|nvme/i.test(event.providerName) || [7, 51, 55, 129, 153, 157].includes(event.eventId)).length,
+  };
+}
+
 function emptySummary(sinceDays: number, warning?: string): WindowsEventSummaryResult {
   return {
     sinceDays,
     events: [],
-    summary: {
-      applicationCrashes: 0,
-      unexpectedShutdowns: 0,
-      hardwareErrors: 0,
-      diskErrors: 0,
-    },
+    summary: summarizeWindowsEventRecords([]),
     warning,
   };
 }
 
 function snippet(input: unknown): string {
   return String(input ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
-}
-
-function summarize(events: WindowsEventSummaryEntry[]): WindowsEventSummaryResult["summary"] {
-  return {
-    applicationCrashes: events.filter((event) => event.providerName === "Application Error" || event.providerName === "Windows Error Reporting" || event.eventId === 1000 || event.eventId === 1001).length,
-    unexpectedShutdowns: events.filter((event) => event.providerName.includes("Kernel-Power") || event.eventId === 41 || event.eventId === 6008).length,
-    hardwareErrors: events.filter((event) => event.providerName.includes("WHEA") || [17, 18, 19, 20, 47].includes(event.eventId)).length,
-    diskErrors: events.filter((event) => /disk|ntfs|storahci|stornvme|nvme/i.test(event.providerName) || [7, 51, 55, 129, 153, 157].includes(event.eventId)).length,
-  };
 }
 
 async function runFixedPowerShellEventQuery(sinceDays: number, logs: string[], maxEvents: number): Promise<WindowsEventSummaryEntry[]> {
@@ -187,7 +186,7 @@ export async function windowsEventSummary(args: Record<string, unknown>): Promis
     return {
       sinceDays,
       events,
-      summary: summarize(events),
+      summary: summarizeWindowsEventRecords(events),
     };
   } catch (error) {
     return emptySummary(sinceDays, error instanceof Error ? error.message : "Windows event query failed");

@@ -16,7 +16,12 @@ import { listDir, readFile, resolveBridgePath } from "./tools/file-tools.ts";
 import { getToolMetadata } from "./tools/index.ts";
 import { driveInventory } from "./tools/drive-inventory.ts";
 import { DANGEROUS_CLEANUP_ROOTS, junkCandidates } from "./tools/junk-candidates.ts";
-import { windowsEventSummaryTool, windowsEventSummary } from "./tools/windows-events.ts";
+import {
+  summarizeWindowsEventRecords,
+  windowsEventSummaryTool,
+  windowsEventSummary,
+  type WindowsEventSummaryEntry,
+} from "./tools/windows-events.ts";
 
 test("MCP tool metadata marks read-only and destructive/open-world tools correctly", () => {
   const metadata = Object.fromEntries(getToolMetadata().map((tool) => [tool.name, tool]));
@@ -141,10 +146,10 @@ test("drive_inventory honors maxEntries and maxDepth truncation", async () => {
 });
 
 test("dangerous cleanup roots use corrected Minecraft and Packages paths", () => {
-  assert.ok(DANGEROUS_CLEANUP_ROOTS.includes("%APPDATA%\\.minecraft"));
-  assert.ok(DANGEROUS_CLEANUP_ROOTS.includes("%LOCALAPPDATA%\\Packages"));
-  assert.equal(DANGEROUS_CLEANUP_ROOTS.includes("%APPDATA%\\Roaming\\.minecraft"), false);
-  assert.equal(DANGEROUS_CLEANUP_ROOTS.includes("%APPDATA%\\Local\\Packages"), false);
+  assert.ok(DANGEROUS_CLEANUP_ROOTS.includes(String.raw`%APPDATA%\.minecraft`));
+  assert.ok(DANGEROUS_CLEANUP_ROOTS.includes(String.raw`%LOCALAPPDATA%\Packages`));
+  assert.equal(DANGEROUS_CLEANUP_ROOTS.includes(String.raw`%APPDATA%\Roaming\.minecraft`), false);
+  assert.equal(DANGEROUS_CLEANUP_ROOTS.includes(String.raw`%APPDATA%\Local\Packages`), false);
 });
 
 test("junk_candidates does not delete and returns review_only candidates", async () => {
@@ -163,6 +168,32 @@ test("junk_candidates does not delete and returns review_only candidates", async
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("Windows crash summary counts event records, not unique incidents", () => {
+  const events: WindowsEventSummaryEntry[] = [
+    {
+      timeCreated: "2026-07-10T00:00:00.000Z",
+      logName: "Application",
+      providerName: "Application Error",
+      eventId: 1000,
+      level: "Error",
+      messageSnippet: "Faulting application record",
+    },
+    {
+      timeCreated: "2026-07-10T00:00:01.000Z",
+      logName: "Application",
+      providerName: "Windows Error Reporting",
+      eventId: 1001,
+      level: "Error",
+      messageSnippet: "Windows Error Reporting record for the same crash",
+    },
+  ];
+
+  const summary = summarizeWindowsEventRecords(events);
+  assert.equal(summary.applicationCrashEvents, 2);
+  assert.equal(summary.countMeaning, "event_records_not_unique_incidents");
+  assert.equal(Object.hasOwn(summary, "applicationCrashes"), false);
 });
 
 test("windows_event_summary does not accept arbitrary command input", async () => {

@@ -85,6 +85,18 @@ Identifies possible junk candidates from metadata only. It does not delete, move
 
 Reads recent Windows Application/System error event summaries through a fixed read-only query. It focuses on application crashes, unexpected shutdowns, WHEA/hardware events, display/GPU resets, and disk/storage providers. It does not accept arbitrary command input and does not auto-elevate.
 
+Summary fields are event-record counts:
+
+```text
+applicationCrashEvents
+unexpectedShutdownEvents
+hardwareErrorEvents
+diskErrorEvents
+countMeaning = "event_records_not_unique_incidents"
+```
+
+These values are not deduplicated fault or crash counts. For example, an `Application Error` 1000 record and a related `Windows Error Reporting` 1001 record can both be counted for one underlying application crash.
+
 ## Configuration
 
 Environment variables:

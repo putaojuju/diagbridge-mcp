@@ -56,6 +56,20 @@ It exposes only:
 
 It does not expose `read_file`, `write_file`, or `run_command` to the HTTP connector by default.
 
+## Windows event summary count semantics
+
+`windows_event_summary.summary` contains event-record counts:
+
+```text
+applicationCrashEvents
+unexpectedShutdownEvents
+hardwareErrorEvents
+diskErrorEvents
+countMeaning = "event_records_not_unique_incidents"
+```
+
+The tool does not deduplicate related records into unique incidents. A single application crash may produce both an `Application Error` 1000 event and a `Windows Error Reporting` 1001 event, and both records may be counted.
+
 ## Enable write or command tools for local development only
 
 Use `DIAGBRIDGE_TOOLS` to opt in for the local bridge or stdio MCP server:

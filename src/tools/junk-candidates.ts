@@ -51,8 +51,8 @@ export const DANGEROUS_CLEANUP_ROOTS = [
   "%APPDATA%\\Microsoft\\Teams",
   "%APPDATA%\\Discord",
   "%APPDATA%\\Tencent",
-  "%APPDATA%\\.minecraft",
-  "%LOCALAPPDATA%\\Packages",
+  String.raw`%APPDATA%\.minecraft`,
+  String.raw`%LOCALAPPDATA%\Packages`,
   "%USERPROFILE%\\Saved Games",
   "%USERPROFILE%\\Documents\\My Games",
 ];
