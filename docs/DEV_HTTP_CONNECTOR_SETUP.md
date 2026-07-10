@@ -66,13 +66,19 @@ set DIAGBRIDGE_HTTP_DEV_NO_AUTH=1
 npm run dev:http-mcp
 ```
 
-Then run:
+Then launch the Inspector UI with:
 
 ```bash
 npx @modelcontextprotocol/inspector@latest --server-url http://127.0.0.1:8787/mcp --transport http
 ```
 
-`DIAGBRIDGE_HTTP_DEV_NO_AUTH=1` is disabled by default. It bypasses only the development HTTP connector token check and still exposes only these four read-only tools:
+For a headless tool-list check:
+
+```bash
+npx @modelcontextprotocol/inspector@latest --cli http://127.0.0.1:8787/mcp --transport http --method tools/list
+```
+
+The expected tool list is exactly:
 
 ```text
 system_info
@@ -80,6 +86,8 @@ drive_inventory
 junk_candidates
 windows_event_summary
 ```
+
+`DIAGBRIDGE_HTTP_DEV_NO_AUTH=1` is disabled by default. It bypasses only the development HTTP connector token check and still exposes only those four read-only tools.
 
 Use no-auth mode only on `127.0.0.1` for a short Inspector test. Do not leave it enabled, do not bind it to `0.0.0.0`, and do not expose it through a public tunnel.
 
@@ -167,13 +175,4 @@ CORS preflight:
 ```bash
 curl -i -X OPTIONS https://<your-tunnel-host>/mcp
 curl -i -X OPTIONS https://<your-tunnel-host>/mcp/actions
-```
-
-Expected connector tools are only:
-
-```text
-system_info
-drive_inventory
-junk_candidates
-windows_event_summary
 ```
