@@ -42,7 +42,7 @@ export const junkCandidatesTool: ToolMetadata = {
 };
 
 const DEFAULT_ROOTS = ["%TEMP%", "%LOCALAPPDATA%\\Temp", "C:\\Windows\\Temp", "%USERPROFILE%\\Downloads"];
-const DANGEROUS_CLEANUP_ROOTS = [
+export const DANGEROUS_CLEANUP_ROOTS = [
   ...DEFAULT_EXCLUDE_PATHS,
   "C:\\Windows\\Installer",
   "C:\\Windows\\WinSxS",
@@ -51,8 +51,8 @@ const DANGEROUS_CLEANUP_ROOTS = [
   "%APPDATA%\\Microsoft\\Teams",
   "%APPDATA%\\Discord",
   "%APPDATA%\\Tencent",
-  "%APPDATA%\\Roaming\\.minecraft",
-  "%APPDATA%\\Local\\Packages",
+  "%APPDATA%\\.minecraft",
+  "%LOCALAPPDATA%\\Packages",
   "%USERPROFILE%\\Saved Games",
   "%USERPROFILE%\\Documents\\My Games",
 ];
