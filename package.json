@@ -1,6 +1,6 @@
 {
   "name": "diagbridge-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Visible Windows MCP bridge for trusted user-authorized sessions.",
   "type": "module",
@@ -10,6 +10,10 @@
     "dev": "node --experimental-strip-types src/server.ts",
     "dev:mcp": "node --experimental-strip-types src/mcp-server.ts",
     "dev:http-mcp": "node --experimental-strip-types src/http-mcp-server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
