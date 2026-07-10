@@ -9,7 +9,7 @@ function corsHeaders() {
   return {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
-    "access-control-allow-headers": "content-type, accept, authorization, x-diagbridge-session-token, mcp-session-id, last-event-id",
+    "access-control-allow-headers": "content-type, accept, authorization, x-diagbridge-session-token, mcp-session-id, last-event-id, mcp-protocol-version",
     "access-control-expose-headers": "mcp-session-id",
     "access-control-max-age": "86400",
   };
@@ -33,12 +33,6 @@ async function main(): Promise<void> {
   const config = loadHttpMcpConfig();
   const session = createSession(config.sessionToken);
   const audit = new AuditLog(config.auditLogPath);
-  const mcpServer = createDiagBridgeMcpServer(config, audit, HTTP_CONNECTOR_TOOL_NAMES);
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-  });
-
-  await mcpServer.connect(transport);
 
   const httpServer = createServer(async (req, res) => {
     try {
@@ -53,7 +47,7 @@ async function main(): Promise<void> {
         return;
       }
 
-      if (isMcpPath(req.url) && ["GET", "POST", "DELETE"].includes(req.method ?? "")) {
+      if (req.method === "POST" && req.url === "/mcp") {
         if (!isHttpConnectorRequestAuthorized(req.headers, session, config.httpDevNoAuth)) {
           sendJson(res, 401, { error: "missing or invalid session token" });
           return;
@@ -62,7 +56,45 @@ async function main(): Promise<void> {
         for (const [name, value] of Object.entries(corsHeaders())) {
           res.setHeader(name, value);
         }
-        await transport.handleRequest(req, res);
+
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: undefined,
+        });
+        const mcpServer = createDiagBridgeMcpServer(config, audit, HTTP_CONNECTOR_TOOL_NAMES);
+
+        try {
+          await mcpServer.connect(transport);
+          await transport.handleRequest(req, res);
+        } catch (error) {
+          console.error("Error handling MCP request:", error);
+          if (!res.headersSent) {
+            sendJson(res, 500, {
+              jsonrpc: "2.0",
+              error: {
+                code: -32603,
+                message: "Internal server error",
+              },
+              id: null,
+            });
+          }
+        } finally {
+          res.once("close", () => {
+            void transport.close();
+            void mcpServer.close();
+          });
+        }
+        return;
+      }
+
+      if ((req.method === "GET" || req.method === "DELETE") && req.url === "/mcp") {
+        sendJson(res, 405, {
+          jsonrpc: "2.0",
+          error: {
+            code: -32000,
+            message: "Method not allowed in stateless development mode.",
+          },
+          id: null,
+        });
         return;
       }
 
