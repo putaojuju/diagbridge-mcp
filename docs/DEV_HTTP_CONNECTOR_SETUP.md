@@ -2,7 +2,7 @@
 
 This guide is for first-round ChatGPT custom connector testing against a local DiagBridge MCP endpoint.
 
-The HTTP MCP fallback is development-only. It is not a production deployment model.
+The HTTP MCP fallback is development-only. It uses the official `@modelcontextprotocol/sdk` Streamable HTTP server transport. It is not a production deployment model.
 
 ## 1. Install
 
@@ -23,6 +23,8 @@ npm test
 ```
 
 ## 4. Start the HTTP MCP server
+
+Normal token-authenticated mode:
 
 ```bash
 npm run dev:http-mcp
@@ -46,9 +48,46 @@ or:
 X-DiagBridge-Session-Token: <token>
 ```
 
-## 5. Expose the local port for connector testing
+## 5. Validate with MCP Inspector
 
-Use a temporary tunnel only for development.
+For a short localhost-only Inspector test, start the server with development no-auth mode:
+
+### PowerShell
+
+```powershell
+$env:DIAGBRIDGE_HTTP_DEV_NO_AUTH="1"
+npm run dev:http-mcp
+```
+
+### Command Prompt
+
+```bat
+set DIAGBRIDGE_HTTP_DEV_NO_AUTH=1
+npm run dev:http-mcp
+```
+
+Then run:
+
+```bash
+npx @modelcontextprotocol/inspector@latest --server-url http://127.0.0.1:8787/mcp --transport http
+```
+
+`DIAGBRIDGE_HTTP_DEV_NO_AUTH=1` is disabled by default. It bypasses only the development HTTP connector token check and still exposes only these four read-only tools:
+
+```text
+system_info
+drive_inventory
+junk_candidates
+windows_event_summary
+```
+
+Use no-auth mode only on `127.0.0.1` for a short Inspector test. Do not leave it enabled, do not bind it to `0.0.0.0`, and do not expose it through a public tunnel.
+
+After the Inspector test, unset the variable or open a new terminal before starting the authenticated connector mode.
+
+## 6. Expose the authenticated local port for connector testing
+
+Use a temporary tunnel only for development. Keep token authentication enabled while tunneling.
 
 ### Option A: ngrok
 
@@ -78,7 +117,7 @@ Example:
 https://example.trycloudflare.com/mcp
 ```
 
-## 6. Configure ChatGPT connector
+## 7. Configure ChatGPT connector
 
 In the ChatGPT custom connector setup, use:
 
@@ -88,7 +127,7 @@ HTTPS URL: https://<your-tunnel-host>/mcp
 
 Use bearer/API-key authentication if the connector setup allows custom authorization headers, and set the value to the session token printed by DiagBridge.
 
-## 7. First-round tool whitelist
+## 8. First-round tool whitelist
 
 The HTTP connector exposes only these read-only tools:
 
@@ -109,13 +148,13 @@ run_command
 
 `read_file` remains available for local development modes, but it is intentionally omitted from the HTTP connector list.
 
-## 8. Do not expose destructive tools through tunnels
+## 9. Do not expose destructive tools through tunnels
 
 Do not enable `write_file` or `run_command` while using ngrok, Cloudflare Tunnel, or any public tunnel.
 
 `run_command` is destructive and open-world. It is not part of the ChatGPT connector first-round test surface.
 
-## 9. Smoke checks
+## 10. Smoke checks
 
 Health text:
 
@@ -130,17 +169,7 @@ curl -i -X OPTIONS https://<your-tunnel-host>/mcp
 curl -i -X OPTIONS https://<your-tunnel-host>/mcp/actions
 ```
 
-Tool list:
-
-```bash
-curl -i -X POST \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-  https://<your-tunnel-host>/mcp
-```
-
-Expected tools are only:
+Expected connector tools are only:
 
 ```text
 system_info
