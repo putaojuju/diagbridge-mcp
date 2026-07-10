@@ -44,6 +44,14 @@ export function isRequestAuthorized(headers: HeaderMap, session: SessionState): 
   return tokenHeader === session.token;
 }
 
+export function isHttpConnectorRequestAuthorized(
+  headers: HeaderMap,
+  session: SessionState,
+  devNoAuth = false,
+): boolean {
+  return devNoAuth ? session.connected : isRequestAuthorized(headers, session);
+}
+
 export function disconnectSession(session: SessionState, reason = "user-requested-disconnect"): SessionState {
   session.connected = false;
   session.disconnectedAt = new Date().toISOString();
