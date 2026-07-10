@@ -101,6 +101,8 @@ async function runFixedPowerShellEventQuery(sinceDays: number, logs: string[], m
   const logsLiteral = logs.map((log) => `'${log.replace(/'/g, "''")}'`).join(",");
   const providersLiteral = WATCH_PROVIDERS.map((provider) => `'${provider.replace(/'/g, "''")}'`).join(",");
   const command = `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $since = (Get-Date).AddDays(-${sinceDays})
 $logs = @(${logsLiteral})
