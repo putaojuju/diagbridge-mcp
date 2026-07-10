@@ -16,7 +16,7 @@ import { listDir, readFile, resolveBridgePath } from "./tools/file-tools.ts";
 import { getToolMetadata } from "./tools/index.ts";
 import { driveInventory } from "./tools/drive-inventory.ts";
 import { DANGEROUS_CLEANUP_ROOTS, junkCandidates } from "./tools/junk-candidates.ts";
-import { windowsEventSummaryTool, windowsEventSummary } from "./tools/windows-events.ts";
+import { summarizeWindowsEvents, windowsEventSummaryTool, windowsEventSummary } from "./tools/windows-events.ts";
 
 test("MCP tool metadata marks read-only and destructive/open-world tools correctly", () => {
   const metadata = Object.fromEntries(getToolMetadata().map((tool) => [tool.name, tool]));
@@ -168,4 +168,32 @@ test("junk_candidates does not delete and returns review_only candidates", async
 test("windows_event_summary does not accept arbitrary command input", async () => {
   assert.equal(Object.hasOwn(windowsEventSummaryTool.inputSchema.properties as Record<string, unknown>, "command"), false);
   await assert.rejects(() => windowsEventSummary({ command: "Get-Process" }), /does not accept arbitrary command/i);
+});
+
+test("windows event summary assigns each event to one matching diagnostic category", () => {
+  const event = (logName: string, providerName: string, eventId: number) => ({
+    logName,
+    providerName,
+    eventId,
+    timeCreated: "2026-07-10T00:00:00.000Z",
+    level: "Information",
+    messageSnippet: "",
+  });
+
+  const summary = summarizeWindowsEvents([
+    event("System", "Microsoft-Windows-WindowsUpdateClient", 19),
+    event("System", "Microsoft-Windows-Kernel-Power", 42),
+    event("System", "Microsoft-Windows-Kernel-Power", 41),
+    event("System", "Microsoft-Windows-WHEA-Logger", 17),
+    event("System", "Disk", 17),
+    event("Application", "Application Error", 1000),
+    event("System", "EventLog", 6008),
+  ]);
+
+  assert.deepEqual(summary, {
+    applicationCrashes: 1,
+    unexpectedShutdowns: 2,
+    hardwareErrors: 1,
+    diskErrors: 1,
+  });
 });
