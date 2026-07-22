@@ -10,6 +10,20 @@
   const btnStop = document.getElementById("btnStop");
   const activityTbody = document.getElementById("activityTbody");
 
+  // Pairing Card Elements
+  const pairingCard = document.getElementById("pairingCard");
+  const selectEndpoint = document.getElementById("selectEndpoint");
+  const inputToken = document.getElementById("inputToken");
+  const btnToggleToken = document.getElementById("btnToggleToken");
+  const pairingExpiresAt = document.getElementById("pairingExpiresAt");
+  const btnCopyConnection = document.getElementById("btnCopyConnection");
+  const copyTip = document.getElementById("copyTip");
+
+  // IN-MEMORY STORAGE ONLY (never saved to localStorage/sessionStorage)
+  let activeOneTimeToken = null;
+  let activeExpiresAt = null;
+  let activeEndpoints = [];
+
   function formatTime(isoString) {
     if (!isoString) return "-";
     try {
@@ -20,20 +34,49 @@
     }
   }
 
+  function showPairingCard() {
+    if (!activeOneTimeToken) return;
+
+    inputToken.value = activeOneTimeToken;
+    inputToken.type = "password";
+    btnToggleToken.textContent = "显示密钥";
+    pairingExpiresAt.textContent = formatTime(activeExpiresAt);
+
+    selectEndpoint.innerHTML = activeEndpoints
+      .map((ep) => `<option value="${ep}">${ep}</option>`)
+      .join("");
+
+    pairingCard.style.display = "block";
+  }
+
+  function hidePairingCard() {
+    activeOneTimeToken = null;
+    activeExpiresAt = null;
+    activeEndpoints = [];
+    inputToken.value = "";
+    pairingCard.style.display = "none";
+  }
+
   function updateStatusUI(statusData) {
     const state = statusData.state || "stopped";
     const connected = Boolean(statusData.connected);
+    const reason = statusData.disconnectReason;
 
-    // Update Header Badge & Text
     statusBadge.className = "status-badge status-" + state;
 
     if (state === "stopped") {
-      statusText.textContent = "已就绪 (停止)";
-      infoState.textContent = "已关闭";
+      if (reason === "session-expired") {
+        statusText.textContent = "会话已过期";
+        infoState.textContent = "已过期";
+      } else {
+        statusText.textContent = "已就绪 (停止)";
+        infoState.textContent = "已关闭";
+      }
       infoState.className = "value";
       infoConnected.textContent = "不可用";
       btnStart.disabled = false;
       btnStop.disabled = true;
+      hidePairingCard();
     } else if (state === "waiting") {
       statusText.textContent = "等待远程连接";
       infoState.textContent = "等待远程连接";
@@ -94,12 +137,49 @@
       .catch((err) => console.error("Error fetching activity:", err));
   }
 
+  btnToggleToken.addEventListener("click", function () {
+    if (inputToken.type === "password") {
+      inputToken.type = "text";
+      btnToggleToken.textContent = "隐藏密钥";
+    } else {
+      inputToken.type = "password";
+      btnToggleToken.textContent = "显示密钥";
+    }
+  });
+
+  btnCopyConnection.addEventListener("click", function () {
+    if (!activeOneTimeToken) return;
+
+    const chosenEndpoint = selectEndpoint.value || "http://127.0.0.1:8787/mcp";
+    const textToCopy = `DiagBridge MCP\nEndpoint: ${chosenEndpoint}\nAuthorization: Bearer ${activeOneTimeToken}\nExpires: ${formatTime(activeExpiresAt)}`;
+
+    navigator.clipboard
+      .writeText(textToCopy)
+      .then(() => {
+        copyTip.classList.add("visible");
+        setTimeout(() => copyTip.classList.remove("visible"), 2500);
+      })
+      .catch((err) => {
+        console.error("Copy failed:", err);
+      });
+  });
+
   btnStart.addEventListener("click", function () {
     btnStart.disabled = true;
     fetch("/api/session/start", { method: "POST" })
       .then((res) => res.json())
-      .then((data) => {
-        updateStatusUI(data);
+      .then((resData) => {
+        const statusData = resData.status || resData;
+        const connData = resData.connection;
+
+        if (connData && connData.token) {
+          activeOneTimeToken = connData.token;
+          activeExpiresAt = connData.expiresAt;
+          activeEndpoints = connData.candidateEndpoints || [];
+          showPairingCard();
+        }
+
+        updateStatusUI(statusData);
         fetchActivity();
       })
       .finally(() => {
@@ -111,8 +191,10 @@
     btnStop.disabled = true;
     fetch("/api/session/stop", { method: "POST" })
       .then((res) => res.json())
-      .then((data) => {
-        updateStatusUI(data);
+      .then((resData) => {
+        const statusData = resData.status || resData;
+        hidePairingCard();
+        updateStatusUI(statusData);
         fetchActivity();
       })
       .finally(() => {

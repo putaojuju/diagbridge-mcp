@@ -129,7 +129,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-
 }
 
 .notice-item {
@@ -177,7 +176,7 @@ body {
   font-weight: 600;
 }
 
-.badge-count {
+.badge-count, .badge-one-time {
   font-size: 12px;
   background: rgba(255, 255, 255, 0.08);
   padding: 2px 8px;
@@ -185,8 +184,84 @@ body {
   color: var(--text-muted);
 }
 
+.badge-one-time {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
 .card-body {
   padding: 20px;
+}
+
+/* Pairing Card */
+.pairing-card {
+  margin-bottom: 24px;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+}
+
+.pairing-header {
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.pairing-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.select-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-main);
+  font-size: 14px;
+  font-family: var(--font-mono);
+}
+
+.token-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.token-input-group input {
+  flex: 1;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: #6ee7b7;
+  font-size: 14px;
+}
+
+.pairing-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.copy-tip {
+  font-size: 13px;
+  color: #6ee7b7;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.copy-tip.visible {
+  opacity: 1;
+}
+
+.pairing-notice {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px 12px;
+  border-radius: 6px;
 }
 
 /* Session Info Grid */
@@ -233,7 +308,6 @@ body {
 }
 
 .btn {
-  flex: 1;
   padding: 10px 16px;
   border-radius: 8px;
   border: none;
@@ -255,6 +329,7 @@ body {
 .btn-primary {
   background: var(--accent-primary);
   color: #fff;
+  flex: 1;
 }
 
 .btn-primary:not(:disabled):hover {
@@ -262,9 +337,29 @@ body {
   box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
 }
 
+.btn-secondary {
+  background: #334155;
+  color: var(--text-main);
+}
+
+.btn-secondary:hover {
+  background: #475569;
+}
+
+.btn-success {
+  background: var(--accent-success);
+  color: #fff;
+}
+
+.btn-success:hover {
+  background: #059669;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+}
+
 .btn-danger {
   background: var(--accent-danger);
   color: #fff;
+  flex: 1;
 }
 
 .btn-danger:not(:disabled):hover {

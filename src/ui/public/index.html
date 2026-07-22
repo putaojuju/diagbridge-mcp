@@ -25,13 +25,49 @@
     <div class="notice-banner">
       <div class="notice-item">
         <span class="icon">🔒</span>
-        <span>当前远程模式仅开放<strong>4 个只读诊断工具</strong>，文件写入与命令执行已被安全屏蔽。</span>
+        <span>当前远程模式仅开放 <strong>4 个只读诊断工具</strong>，文件写入与命令执行已被安全屏蔽。</span>
       </div>
       <div class="notice-item">
         <span class="icon">🛑</span>
         <span>关闭诊断会话后，所有远程 MCP 请求将被立即拒绝。</span>
       </div>
     </div>
+
+    <!-- Pairing Connection Modal / Card (Shown when start succeeds) -->
+    <section id="pairingCard" class="card pairing-card" style="display: none;">
+      <div class="card-header pairing-header">
+        <h2>🔑 远程诊断连接凭据（一次性生成）</h2>
+        <span class="badge-one-time">仅显一次</span>
+      </div>
+      <div class="card-body">
+        <div class="pairing-grid">
+          <div class="info-item full-width">
+            <label class="label" for="selectEndpoint">选择候选远程地址 (Candidate Endpoint)</label>
+            <select id="selectEndpoint" class="select-input"></select>
+          </div>
+          <div class="info-item full-width">
+            <span class="label">一次性会话密钥 (Session Token)</span>
+            <div class="token-input-group">
+              <input type="password" id="inputToken" class="code-font" readonly />
+              <button id="btnToggleToken" class="btn btn-secondary">显示密钥</button>
+            </div>
+          </div>
+          <div class="info-item full-width">
+            <span class="label">有效截止时间</span>
+            <span id="pairingExpiresAt" class="value">-</span>
+          </div>
+        </div>
+        <div class="pairing-actions">
+          <button id="btnCopyConnection" class="btn btn-success">
+            <span class="btn-icon">📋</span> 复制连接信息
+          </button>
+          <span id="copyTip" class="copy-tip">已复制到剪贴板！</span>
+        </div>
+        <p class="pairing-notice">
+          💡 提示：完整密钥仅在此次点击“开始诊断”时显示一次。刷新页面后将仅展示尾号校验。
+        </p>
+      </div>
+    </section>
 
     <main class="grid-layout">
       <!-- Session Control Card -->
@@ -43,7 +79,7 @@
           <div class="session-info-grid">
             <div class="info-item">
               <span class="label">会话状态</span>
-              <span id="infoState" class="value highlight">未启动</span>
+              <span id="infoState" class="value highlight">已关闭</span>
             </div>
             <div class="info-item">
               <span class="label">远程连接</span>

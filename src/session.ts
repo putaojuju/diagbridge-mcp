@@ -67,12 +67,31 @@ export function stopSession(
 
 export const disconnectSession = stopSession;
 
+export function isSessionExpired(session: SessionState): boolean {
+  if (session.state === "stopped" || !session.expiresAt) {
+    return false;
+  }
+  return Date.now() > new Date(session.expiresAt).getTime();
+}
+
+export function checkAndExpireSession(session: SessionState): boolean {
+  if (isSessionExpired(session)) {
+    stopSession(session, "session-expired");
+    return true;
+  }
+  return false;
+}
+
 export function getHeader(headers: HeaderMap, name: string): string | undefined {
   const value = headers[name.toLowerCase()] ?? headers[name];
   return Array.isArray(value) ? value[0] : value;
 }
 
 export function isRequestAuthorized(headers: HeaderMap, session: SessionState): boolean {
+  if (checkAndExpireSession(session)) {
+    return false;
+  }
+
   if (session.state === "stopped" || !session.token) {
     return false;
   }
@@ -99,6 +118,10 @@ export function isRemoteMcpRequestAuthorized(
   session: SessionState,
   devNoAuth = false,
 ): boolean {
+  if (checkAndExpireSession(session)) {
+    return false;
+  }
+
   if (session.state === "stopped") {
     return false;
   }
