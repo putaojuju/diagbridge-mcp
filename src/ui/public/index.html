@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DiagBridge 控制面板</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-icon">🛡️</div>
+        <div>
+          <h1>DiagBridge 控制面板</h1>
+          <p class="subtitle">通用 Windows MCP 远程只读诊断桥</p>
+        </div>
+      </div>
+      <div id="statusBadge" class="status-badge status-stopped">
+        <span class="dot"></span>
+        <span id="statusText">未启动</span>
+      </div>
+    </header>
+
+    <div class="notice-banner">
+      <div class="notice-item">
+        <span class="icon">🔒</span>
+        <span>当前远程模式仅开放<strong>4 个只读诊断工具</strong>，文件写入与命令执行已被安全屏蔽。</span>
+      </div>
+      <div class="notice-item">
+        <span class="icon">🛑</span>
+        <span>关闭诊断会话后，所有远程 MCP 请求将被立即拒绝。</span>
+      </div>
+    </div>
+
+    <main class="grid-layout">
+      <!-- Session Control Card -->
+      <section class="card session-card">
+        <div class="card-header">
+          <h2>诊断会话状态</h2>
+        </div>
+        <div class="card-body">
+          <div class="session-info-grid">
+            <div class="info-item">
+              <span class="label">会话状态</span>
+              <span id="infoState" class="value highlight">未启动</span>
+            </div>
+            <div class="info-item">
+              <span class="label">远程连接</span>
+              <span id="infoConnected" class="value">未连接</span>
+            </div>
+            <div class="info-item">
+              <span class="label">开始时间</span>
+              <span id="infoStartedAt" class="value">-</span>
+            </div>
+            <div class="info-item">
+              <span class="label">有效截止</span>
+              <span id="infoExpiresAt" class="value">-</span>
+            </div>
+            <div class="info-item full-width">
+              <span class="label">Token 尾号验证</span>
+              <span id="infoTokenLast4" class="value code-font">-</span>
+            </div>
+          </div>
+          <div class="action-buttons">
+            <button id="btnStart" class="btn btn-primary">
+              <span class="btn-icon">▶</span> 开始诊断
+            </button>
+            <button id="btnStop" class="btn btn-danger" disabled>
+              <span class="btn-icon">⏹</span> 结束诊断
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Allowed Tools Card -->
+      <section class="card tools-card">
+        <div class="card-header">
+          <h2>允许的远程诊断工具</h2>
+          <span class="badge-count">4 个只读工具</span>
+        </div>
+        <div class="card-body">
+          <ul id="toolsList" class="tools-list">
+            <li class="tool-item">
+              <span class="tool-name">system_info</span>
+              <span class="tool-desc">获取主机名、OS 版本、CPU 架构与运行时间</span>
+            </li>
+            <li class="tool-item">
+              <span class="tool-name">drive_inventory</span>
+              <span class="tool-desc">扫描目录结构、文件大小与修改时间元数据</span>
+            </li>
+            <li class="tool-item">
+              <span class="tool-name">junk_candidates</span>
+              <span class="tool-desc">分析垃圾临时文件及日志候选（只读分析不自动删除）</span>
+            </li>
+            <li class="tool-item">
+              <span class="tool-name">windows_event_summary</span>
+              <span class="tool-desc">统计 Application 及 System 事件日志与崩溃汇总</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Recent Activity Card -->
+      <section class="card activity-card full-span">
+        <div class="card-header">
+          <h2>最近 MCP 调用记录</h2>
+          <span class="badge-count">最近 20 项记录</span>
+        </div>
+        <div class="card-body">
+          <div class="table-wrapper">
+            <table class="activity-table">
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>工具名称</th>
+                  <th>状态</th>
+                  <th>参数摘要</th>
+                </tr>
+              </thead>
+              <tbody id="activityTbody">
+                <tr>
+                  <td colspan="4" class="empty-cell">暂无调用记录</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

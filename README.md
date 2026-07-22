@@ -22,6 +22,8 @@ It exposes one shared tool registry through:
 | Stdio MCP server (Manual Dev) | `npm run dev:mcp` | Manual process launch for development. |
 
 | Streamable HTTP MCP transport | `npm run dev:remote-mcp` | Remote MCP client integration over Streamable HTTP (`src/mcp/transports/streamable-http.ts`). |
+| Local Control Panel (Web UI) | `npm run dev:friend-ui` | Local Web UI (`http://127.0.0.1:8790`) and Remote Streamable HTTP server for friend diagnostic session management. |
+
 
 ## Tools Overview
 

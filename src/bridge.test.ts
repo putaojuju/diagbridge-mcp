@@ -19,8 +19,10 @@ import {
 } from "./config.ts";
 import { TOOL_REGISTRY, getToolMetadata, invokeTool } from "./mcp/tool-registry.ts";
 import { createDiagBridgeMcpServer } from "./mcp/server-factory.ts";
-import { createSession, isRemoteMcpRequestAuthorized, isRequestAuthorized } from "./session.ts";
+import { createSession, createStoppedSession, isRemoteMcpRequestAuthorized, isRequestAuthorized } from "./session.ts";
 import { listDir, readFile, resolveBridgePath } from "./tools/file-tools.ts";
+import { createUiServer } from "./ui/server.ts";
+
 import { driveInventory } from "./tools/drive-inventory.ts";
 import { DANGEROUS_CLEANUP_ROOTS, junkCandidates } from "./tools/junk-candidates.ts";
 import { summarizeWindowsEvents, windowsEventSummary } from "./tools/windows-events.ts";
@@ -564,4 +566,70 @@ test("real Remote MCP server over Streamable HTTP verifies 401 auth errors, vali
   });
   const closedClient = new Client({ name: "client-closed", version: "1.0.0" }, { capabilities: {} });
   await assert.rejects(() => closedClient.connect(closedTransport));
+});
+
+test("Local UI server binds only to 127.0.0.1 and manages shared SessionState and AuditLog activity", async () => {
+  const session = createStoppedSession();
+  const audit = new AuditLog();
+
+  // 1. Host restriction check
+  assert.throws(() => createUiServer(session, audit, 8790, "0.0.0.0"), /restricted to 127\.0\.0\.1/);
+
+  const uiServer = createUiServer(session, audit, 0, "127.0.0.1");
+  await new Promise<void>((resolvePromise) => uiServer.listen(0, "127.0.0.1", resolvePromise));
+  const address = uiServer.address() as AddressInfo;
+  const uiUrl = `http://127.0.0.1:${address.port}`;
+
+  try {
+    // 2. Default state is stopped
+    const statusRes1 = await fetch(`${uiUrl}/api/status`);
+    const status1 = (await statusRes1.json()) as Record<string, unknown>;
+    assert.equal(status1.state, "stopped");
+    assert.equal(status1.connected, false);
+    assert.equal(status1.tokenLast4, null);
+    assert.equal(Object.hasOwn(status1, "token"), false); // 6. Does not return full token
+    assert.deepEqual(status1.allowedTools, [...REMOTE_MCP_TOOL_NAMES]); // 8. Fixed 4 read-only tools
+
+    // 3. POST /api/session/start sets state to waiting
+    const startRes = await fetch(`${uiUrl}/api/session/start`, { method: "POST" });
+    const status2 = (await startRes.json()) as Record<string, unknown>;
+    assert.equal(status2.state, "waiting");
+    assert.equal(status2.connected, false);
+    assert.ok(typeof status2.tokenLast4 === "string" && (status2.tokenLast4 as string).length === 4);
+    assert.equal(Object.hasOwn(status2, "token"), false);
+    const activeToken = session.token!;
+    assert.ok(activeToken);
+
+    // 4. Authorized MCP request transitions state to connected
+    const authorizedReq = isRemoteMcpRequestAuthorized({ authorization: `Bearer ${activeToken}` }, session);
+    assert.equal(authorizedReq, true);
+    assert.equal(session.state, "connected");
+    assert.equal(session.connected, true);
+
+    const statusRes3 = await fetch(`${uiUrl}/api/status`);
+    const status3 = (await statusRes3.json()) as Record<string, unknown>;
+    assert.equal(status3.state, "connected");
+    assert.equal(status3.connected, true);
+
+    // 7. Audit log activity test
+    await audit.record({ toolName: "system_info", params: { secret: "123" }, status: "ok" });
+    const activityRes = await fetch(`${uiUrl}/api/activity`);
+    const activities = (await activityRes.json()) as Array<Record<string, unknown>>;
+    assert.equal(activities.length, 1);
+    assert.equal(activities[0].toolName, "system_info");
+    assert.equal(activities[0].status, "ok");
+    assert.match(activities[0].paramSummary as string, /redacted-summary/);
+    assert.equal(Object.hasOwn(activities[0], "result"), false);
+
+    // 5. POST /api/session/stop invalidates token
+    const stopRes = await fetch(`${uiUrl}/api/session/stop`, { method: "POST" });
+    const status4 = (await stopRes.json()) as Record<string, unknown>;
+    assert.equal(status4.state, "stopped");
+    assert.equal(status4.connected, false);
+
+    const oldTokenAuth = isRemoteMcpRequestAuthorized({ authorization: `Bearer ${activeToken}` }, session);
+    assert.equal(oldTokenAuth, false);
+  } finally {
+    uiServer.close();
+  }
 });

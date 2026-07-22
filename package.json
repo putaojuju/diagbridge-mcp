@@ -13,8 +13,10 @@
     "dev": "node --experimental-strip-types src/mcp/transports/stdio.ts",
     "dev:mcp": "node --experimental-strip-types src/mcp/transports/stdio.ts",
     "dev:remote-mcp": "node --experimental-strip-types src/mcp/transports/streamable-http.ts",
-    "dev:http-mcp": "node --experimental-strip-types src/mcp/transports/streamable-http.ts"
+    "dev:http-mcp": "node --experimental-strip-types src/mcp/transports/streamable-http.ts",
+    "dev:friend-ui": "node --experimental-strip-types src/ui/launch-friend-ui.ts"
   },
+
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.0.0"
