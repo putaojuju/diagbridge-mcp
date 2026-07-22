@@ -1,9 +1,9 @@
 import { createServer, type ServerResponse } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { AuditLog } from "./audit.ts";
-import { HTTP_CONNECTOR_TOOL_NAMES, loadHttpMcpConfig } from "./config.ts";
-import { createDiagBridgeMcpServer } from "./mcp-server-factory.ts";
-import { createSession, isHttpConnectorRequestAuthorized } from "./session.ts";
+import { AuditLog } from "../../audit.ts";
+import { REMOTE_MCP_TOOL_NAMES, loadRemoteMcpConfig } from "../../config.ts";
+import { createDiagBridgeMcpServer } from "../server-factory.ts";
+import { createSession, isRemoteMcpRequestAuthorized } from "../../session.ts";
 
 function corsHeaders() {
   return {
@@ -30,14 +30,14 @@ function isMcpPath(url: string | undefined): boolean {
 }
 
 async function main(): Promise<void> {
-  const config = loadHttpMcpConfig();
+  const config = loadRemoteMcpConfig();
   const session = createSession(config.sessionToken);
   const audit = new AuditLog(config.auditLogPath);
 
   const httpServer = createServer(async (req, res) => {
     try {
       if (req.method === "GET" && req.url === "/") {
-        sendText(res, 200, "DiagBridge MCP development HTTP connector server\n");
+        sendText(res, 200, "DiagBridge MCP Remote Streamable HTTP Endpoint\n");
         return;
       }
 
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
       }
 
       if (req.method === "POST" && req.url === "/mcp") {
-        if (!isHttpConnectorRequestAuthorized(req.headers, session, config.httpDevNoAuth)) {
+        if (!isRemoteMcpRequestAuthorized(req.headers, session, config.remoteDevNoAuth)) {
           sendJson(res, 401, { error: "missing or invalid session token" });
           return;
         }
@@ -60,7 +60,21 @@ async function main(): Promise<void> {
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: undefined,
         });
-        const mcpServer = createDiagBridgeMcpServer(config, audit, HTTP_CONNECTOR_TOOL_NAMES);
+        const mcpServer = createDiagBridgeMcpServer(config, audit, REMOTE_MCP_TOOL_NAMES);
+
+        let cleanedUp = false;
+        const cleanup = () => {
+          if (!cleanedUp) {
+            cleanedUp = true;
+            Promise.allSettled([
+              transport.close(),
+              mcpServer.close(),
+            ]).catch(() => {});
+          }
+        };
+
+        res.once("finish", cleanup);
+        res.once("close", cleanup);
 
         try {
           await mcpServer.connect(transport);
@@ -77,11 +91,7 @@ async function main(): Promise<void> {
               id: null,
             });
           }
-        } finally {
-          res.once("close", () => {
-            void transport.close();
-            void mcpServer.close();
-          });
+          cleanup();
         }
         return;
       }
@@ -91,7 +101,7 @@ async function main(): Promise<void> {
           jsonrpc: "2.0",
           error: {
             code: -32000,
-            message: "Method not allowed in stateless development mode.",
+            message: "Method not allowed in stateless mode.",
           },
           id: null,
         });
@@ -107,17 +117,17 @@ async function main(): Promise<void> {
   });
 
   httpServer.listen(config.port, config.host, () => {
-    console.log(`DiagBridge official Streamable HTTP MCP endpoint listening on http://${config.host}:${config.port}/mcp`);
-    console.log(`HTTP connector tools: ${HTTP_CONNECTOR_TOOL_NAMES.join(", ")}`);
+    console.log(`DiagBridge Streamable HTTP MCP endpoint listening on http://${config.host}:${config.port}/mcp`);
+    console.log(`Remote MCP tools: ${REMOTE_MCP_TOOL_NAMES.join(", ")}`);
 
-    if (config.httpDevNoAuth) {
-      console.warn("WARNING: DIAGBRIDGE_HTTP_DEV_NO_AUTH=1 is enabled.");
+    if (config.remoteDevNoAuth) {
+      console.warn("WARNING: DIAGBRIDGE_REMOTE_DEV_NO_AUTH=1 is enabled.");
       console.warn("Use this only for short-lived localhost Inspector testing. Do not leave it on or expose it through a public tunnel.");
     } else {
       console.log(`Session token: ${session.token}`);
     }
 
-    console.log("write_file and run_command are never registered on the HTTP connector transport.");
+    console.log("read_file, write_file, and run_command are never registered on the remote HTTP transport.");
   });
 }
 

@@ -1,8 +1,8 @@
-# Usage
+# Usage Guide
 
-DiagBridge MCP is intended for trusted, visible local sessions.
+DiagBridge MCP is a general Windows MCP bridge for trusted local and remote AI agents.
 
-## Install and check
+## Install and Verify
 
 ```bash
 npm install
@@ -10,13 +10,15 @@ npm run check
 npm test
 ```
 
-## Start local HTTP bridge
+## Start Stdio MCP Server (Local Clients)
 
 ```bash
-npm run dev
+npm run dev:mcp
 ```
 
-By default DiagBridge listens on `127.0.0.1:8787` and enables read-only local tools:
+This runs the stdio MCP server for local MCP clients like Codex, Claude Code, or Cursor.
+
+Default enabled local tools:
 
 - `system_info`
 - `list_dir`
@@ -25,91 +27,47 @@ By default DiagBridge listens on `127.0.0.1:8787` and enables read-only local to
 - `junk_candidates`
 - `windows_event_summary`
 
-The server prints a session token at startup. Protected endpoints require that token.
-
-## Start stdio MCP server
+## Start Streamable HTTP Server (Remote Clients)
 
 ```bash
-npm run dev:mcp
+npm run dev:remote-mcp
 ```
 
-Use this for local MCP hosts that spawn a stdio server.
-
-## Start development HTTP MCP fallback
-
-```bash
-npm run dev:http-mcp
-```
-
-This starts a development-only HTTP MCP endpoint at:
+This starts the Streamable HTTP MCP transport at:
 
 ```text
 http://127.0.0.1:8787/mcp
 ```
 
-It exposes only:
+It exposes only 4 read-only diagnostic tools:
 
 - `system_info`
 - `drive_inventory`
 - `junk_candidates`
 - `windows_event_summary`
 
-It does not expose `read_file`, `write_file`, or `run_command` to the HTTP connector by default.
+`read_file`, `write_file`, and `run_command` are **never** exposed over Streamable HTTP.
 
-## Enable write or command tools for local development only
+## Enable Write or Command Tools for Local Stdio Only
 
-Use `DIAGBRIDGE_TOOLS` to opt in for the local bridge or stdio MCP server:
+Use `DIAGBRIDGE_MCP_TOOLS` to opt in for the local stdio MCP server:
 
 ```bash
-DIAGBRIDGE_TOOLS=system_info,list_dir,read_file,drive_inventory,junk_candidates,windows_event_summary,write_file npm run dev
+DIAGBRIDGE_MCP_TOOLS=system_info,list_dir,read_file,drive_inventory,junk_candidates,windows_event_summary,write_file npm run dev:mcp
 ```
 
 ```bash
-DIAGBRIDGE_TOOLS=system_info,list_dir,read_file,drive_inventory,junk_candidates,windows_event_summary,write_file,run_command npm run dev
+DIAGBRIDGE_MCP_TOOLS=system_info,list_dir,read_file,drive_inventory,junk_candidates,windows_event_summary,write_file,run_command npm run dev:mcp
 ```
 
-`run_command` is destructive and open-world. Do not expose it through a public tunnel.
+`run_command` is destructive and open-world. Never attempt to expose it to remote clients.
 
-## Call a tool through the local bridge
+## Audit Log
 
-```bash
-curl -H "Authorization: Bearer <token>" http://127.0.0.1:8787/tools
-```
-
-```bash
-curl -X POST \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"system_info","args":{}}' \
-  http://127.0.0.1:8787/call
-```
-
-## Call a tool through `/mcp`
-
-```bash
-curl -X POST \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-  http://127.0.0.1:8787/mcp
-```
-
-## Disconnect local bridge
-
-```bash
-curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:8787/disconnect
-```
-
-After disconnect, protected local bridge requests are rejected.
-
-## Audit log
-
-Audit events are written as JSONL. Each event records:
+Audit events are written as JSONL (`.diagbridge-audit.jsonl`). Each event records:
 
 - tool name
 - summarized parameters
 - timestamp
 - result status
-- optional message
-
-The audit log is for visibility and troubleshooting. It is not tamper-proof storage.
+- optional error message

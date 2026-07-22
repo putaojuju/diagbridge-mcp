@@ -2,14 +2,18 @@
   "name": "diagbridge-mcp",
   "version": "0.2.1",
   "private": true,
-  "description": "Visible Windows MCP bridge for trusted user-authorized sessions.",
+  "description": "General Windows MCP bridge for trusted local and remote AI agents.",
   "type": "module",
+  "engines": {
+    "node": ">=22.6.0"
+  },
   "scripts": {
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "node --experimental-strip-types --test src/bridge.test.ts",
-    "dev": "node --experimental-strip-types src/server.ts",
-    "dev:mcp": "node --experimental-strip-types src/mcp-server.ts",
-    "dev:http-mcp": "node --experimental-strip-types src/http-mcp-server.ts"
+    "test": "node --experimental-strip-types src/bridge.test.ts",
+    "dev": "node --experimental-strip-types src/mcp/transports/stdio.ts",
+    "dev:mcp": "node --experimental-strip-types src/mcp/transports/stdio.ts",
+    "dev:remote-mcp": "node --experimental-strip-types src/mcp/transports/streamable-http.ts",
+    "dev:http-mcp": "node --experimental-strip-types src/mcp/transports/streamable-http.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

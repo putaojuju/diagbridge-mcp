@@ -1,12 +1,12 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { AuditLog } from "./audit.ts";
-import { LOCAL_MCP_TOOL_NAMES, loadConfig } from "./config.ts";
-import { createDiagBridgeMcpServer } from "./mcp-server-factory.ts";
+import { AuditLog } from "../../audit.ts";
+import { loadConfig } from "../../config.ts";
+import { createDiagBridgeMcpServer } from "../server-factory.ts";
 
 async function main(): Promise<void> {
   const config = loadConfig();
   const audit = new AuditLog(config.auditLogPath);
-  const server = createDiagBridgeMcpServer(config, audit, LOCAL_MCP_TOOL_NAMES);
+  const server = createDiagBridgeMcpServer(config, audit, config.enabledTools);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

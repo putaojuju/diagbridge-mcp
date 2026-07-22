@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import type { ToolMetadata } from "../config.ts";
+import * as z from "zod/v4";
+import type { ToolDefinition } from "../mcp/types.ts";
 
 export interface WindowsEventSummaryEntry {
   timeCreated: string;
@@ -22,33 +23,11 @@ export interface WindowsEventSummaryResult {
   warning?: string;
 }
 
-export const windowsEventSummaryTool: ToolMetadata = {
-  name: "windows_event_summary",
-  title: "Windows event summary",
-  description: "Read recent Windows Application/System error events using a fixed read-only query. It does not accept arbitrary commands and does not auto-elevate.",
-  inputSchema: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      sinceDays: { type: "number", default: 14 },
-      logs: { type: "array", items: { type: "string" }, default: ["Application", "System"] },
-      maxEvents: { type: "number", default: 200 },
-    },
-  },
-  annotations: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    openWorldHint: false,
-  },
-};
-
 const ALLOWED_LOGS = new Set(["Application", "System"]);
 const WATCH_PROVIDERS = [
   "Application Error",
   "Windows Error Reporting",
   "Microsoft-Windows-WER-SystemErrorReporting",
-  "Microsoft-Windows-Kernel-Power",
-  "EventLog",
   "Microsoft-Windows-WHEA-Logger",
   "Display",
   "Disk",
@@ -88,13 +67,54 @@ function snippet(input: unknown): string {
   return String(input ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
 }
 
-function summarize(events: WindowsEventSummaryEntry[]): WindowsEventSummaryResult["summary"] {
-  return {
-    applicationCrashes: events.filter((event) => event.providerName === "Application Error" || event.providerName === "Windows Error Reporting" || event.eventId === 1000 || event.eventId === 1001).length,
-    unexpectedShutdowns: events.filter((event) => event.providerName.includes("Kernel-Power") || event.eventId === 41 || event.eventId === 6008).length,
-    hardwareErrors: events.filter((event) => event.providerName.includes("WHEA") || [17, 18, 19, 20, 47].includes(event.eventId)).length,
-    diskErrors: events.filter((event) => /disk|ntfs|storahci|stornvme|nvme/i.test(event.providerName) || [7, 51, 55, 129, 153, 157].includes(event.eventId)).length,
+type SummaryCategory = keyof WindowsEventSummaryResult["summary"];
+
+function classifyEvent(event: WindowsEventSummaryEntry): SummaryCategory | undefined {
+  const provider = event.providerName.toLowerCase();
+  const isSystemLog = event.logName.toLowerCase() === "system";
+  const isApplicationLog = event.logName.toLowerCase() === "application";
+
+  if (
+    (isApplicationLog && (provider === "application error" || provider === "windows error reporting" || provider.includes("wer"))) ||
+    (isApplicationLog && [1000, 1001].includes(event.eventId))
+  ) {
+    return "applicationCrashes";
+  }
+
+  if (
+    (provider.includes("kernel-power") && event.eventId === 41) ||
+    (isSystemLog && provider === "eventlog" && event.eventId === 6008)
+  ) {
+    return "unexpectedShutdowns";
+  }
+
+  if (provider.includes("whea")) {
+    return "hardwareErrors";
+  }
+
+  if (/disk|ntfs|storahci|stornvme|nvme/i.test(provider)) {
+    return "diskErrors";
+  }
+
+  return undefined;
+}
+
+export function summarizeWindowsEvents(events: WindowsEventSummaryEntry[]): WindowsEventSummaryResult["summary"] {
+  const summary = {
+    applicationCrashes: 0,
+    unexpectedShutdowns: 0,
+    hardwareErrors: 0,
+    diskErrors: 0,
   };
+
+  for (const event of events) {
+    const category = classifyEvent(event);
+    if (category) {
+      summary[category] += 1;
+    }
+  }
+
+  return summary;
 }
 
 async function runFixedPowerShellEventQuery(sinceDays: number, logs: string[], maxEvents: number): Promise<WindowsEventSummaryEntry[]> {
@@ -107,10 +127,14 @@ $ErrorActionPreference = 'Stop'
 $since = (Get-Date).AddDays(-${sinceDays})
 $logs = @(${logsLiteral})
 $providers = @(${providersLiteral})
-$ids = @(1000,1001,41,6008,17,18,19,20,47,7,51,55,129,153,157)
 $all = foreach ($log in $logs) {
   Get-WinEvent -FilterHashtable @{ LogName = $log; StartTime = $since } -ErrorAction SilentlyContinue |
-    Where-Object { $_.LevelDisplayName -in @('Error','Critical') -or $providers -contains $_.ProviderName -or $ids -contains $_.Id } |
+    Where-Object {
+      $_.LevelDisplayName -in @('Error','Critical') -or
+      $providers -contains $_.ProviderName -or
+      ($_.ProviderName -eq 'Microsoft-Windows-Kernel-Power' -and $_.Id -eq 41) -or
+      ($_.ProviderName -eq 'EventLog' -and $_.Id -eq 6008)
+    } |
     Select-Object -First ${maxEvents} @{Name='timeCreated';Expression={$_.TimeCreated.ToString('o')}}, @{Name='logName';Expression={$_.LogName}}, @{Name='providerName';Expression={$_.ProviderName}}, @{Name='eventId';Expression={$_.Id}}, @{Name='level';Expression={$_.LevelDisplayName}}, @{Name='messageSnippet';Expression={ if ($_.Message) { ($_.Message -replace '\\s+',' ').Substring(0, [Math]::Min(500, ($_.Message -replace '\\s+',' ').Length)) } else { '' } }}
 }
 $all | Sort-Object timeCreated -Descending | Select-Object -First ${maxEvents} | ConvertTo-Json -Depth 4 -Compress
@@ -187,9 +211,26 @@ export async function windowsEventSummary(args: Record<string, unknown>): Promis
     return {
       sinceDays,
       events,
-      summary: summarize(events),
+      summary: summarizeWindowsEvents(events),
     };
   } catch (error) {
     return emptySummary(sinceDays, error instanceof Error ? error.message : "Windows event query failed");
   }
 }
+
+export const windowsEventSummaryDefinition: ToolDefinition = {
+  name: "windows_event_summary",
+  title: "Windows event summary",
+  description: "Read recent Windows Application/System error events using a fixed read-only query. It does not accept arbitrary commands and does not auto-elevate.",
+  zodSchema: {
+    sinceDays: z.number().int().min(1).max(90).optional(),
+    logs: z.array(z.enum(["Application", "System"])).optional(),
+    maxEvents: z.number().int().min(1).max(500).optional(),
+  },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+  },
+  handler: async (args) => windowsEventSummary(args),
+};

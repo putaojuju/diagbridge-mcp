@@ -1,6 +1,7 @@
 import { extname, isAbsolute, normalize, resolve, sep } from "node:path";
 import { readdir, stat } from "node:fs/promises";
-import type { ToolMetadata } from "../config.ts";
+import * as z from "zod/v4";
+import type { ToolDefinition } from "../mcp/types.ts";
 
 export interface DriveInventoryEntry {
   path: string;
@@ -17,30 +18,6 @@ export interface DriveInventoryResult {
   truncated: boolean;
   entries: DriveInventoryEntry[];
 }
-
-export const driveInventoryTool: ToolMetadata = {
-  name: "drive_inventory",
-  title: "Drive inventory",
-  description: "Read-only directory metadata scan. It records names, types, sizes, modified times, and extensions without reading file contents.",
-  inputSchema: {
-    type: "object",
-    additionalProperties: false,
-    required: ["root"],
-    properties: {
-      root: { type: "string" },
-      maxDepth: { type: "number", default: 2 },
-      maxEntries: { type: "number", default: 5000 },
-      maxSeconds: { type: "number", default: 30 },
-      includeHidden: { type: "boolean", default: false },
-      excludePaths: { type: "array", items: { type: "string" }, default: [] },
-    },
-  },
-  annotations: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    openWorldHint: false,
-  },
-};
 
 export const DEFAULT_EXCLUDE_PATHS = [
   "%USERPROFILE%\\.ssh",
@@ -186,3 +163,23 @@ export async function driveInventory(args: Record<string, unknown>, cwd = proces
     entries,
   };
 }
+
+export const driveInventoryDefinition: ToolDefinition = {
+  name: "drive_inventory",
+  title: "Drive inventory",
+  description: "Read-only directory metadata scan. It records names, types, sizes, modified times, and extensions without reading file contents.",
+  zodSchema: {
+    root: z.string(),
+    maxDepth: z.number().int().min(0).max(10).optional(),
+    maxEntries: z.number().int().min(1).max(100_000).optional(),
+    maxSeconds: z.number().int().min(1).max(300).optional(),
+    includeHidden: z.boolean().optional(),
+    excludePaths: z.array(z.string()).optional(),
+  },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+  },
+  handler: async (args, config) => driveInventory(args, config.cwd),
+};

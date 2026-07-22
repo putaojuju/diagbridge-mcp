@@ -1,68 +1,7 @@
 import { dirname, isAbsolute, normalize, resolve } from "node:path";
 import { mkdir, readFile as fsReadFile, readdir, stat, writeFile as fsWriteFile } from "node:fs/promises";
-import type { ToolMetadata } from "../config.ts";
-
-export const listDirTool: ToolMetadata = {
-  name: "list_dir",
-  title: "List directory",
-  description: "List entries in a local directory. This is a read-only tool.",
-  inputSchema: {
-    type: "object",
-    additionalProperties: false,
-    required: ["path"],
-    properties: {
-      path: { type: "string" },
-    },
-  },
-  annotations: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    openWorldHint: false,
-  },
-};
-
-export const readFileTool: ToolMetadata = {
-  name: "read_file",
-  title: "Read file",
-  description: "Read a local text file. This is a read-only tool.",
-  inputSchema: {
-    type: "object",
-    additionalProperties: false,
-    required: ["path"],
-    properties: {
-      path: { type: "string" },
-      encoding: { type: "string", default: "utf8" },
-      maxBytes: { type: "number", default: 1048576 },
-    },
-  },
-  annotations: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    openWorldHint: false,
-  },
-};
-
-export const writeFileTool: ToolMetadata = {
-  name: "write_file",
-  title: "Write file",
-  description: "Write a local text file. This is destructive and should normally require MCP host approval.",
-  inputSchema: {
-    type: "object",
-    additionalProperties: false,
-    required: ["path", "content"],
-    properties: {
-      path: { type: "string" },
-      content: { type: "string" },
-      encoding: { type: "string", default: "utf8" },
-      createParents: { type: "boolean", default: false },
-    },
-  },
-  annotations: {
-    readOnlyHint: false,
-    destructiveHint: true,
-    openWorldHint: false,
-  },
-};
+import * as z from "zod/v4";
+import type { ToolDefinition } from "../mcp/types.ts";
 
 export function resolveBridgePath(inputPath: string, cwd = process.cwd()): string {
   if (!inputPath || inputPath.trim().length === 0) {
@@ -128,3 +67,58 @@ export async function writeFile(args: Record<string, unknown>, cwd = process.cwd
     bytesWritten: Buffer.from(content, encoding).length,
   };
 }
+
+export const listDirDefinition: ToolDefinition = {
+  name: "list_dir",
+  title: "List directory",
+  description: "List entries in a local directory. This is a read-only tool.",
+  zodSchema: {
+    path: z.string(),
+  },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+  },
+  handler: async (args, config) => listDir(args, config.cwd),
+};
+
+export const readFileDefinition: ToolDefinition = {
+  name: "read_file",
+  title: "Read file",
+  description: "Read a local text file. This is a read-only tool.",
+  zodSchema: {
+    path: z.string(),
+    encoding: z.string().optional(),
+    maxBytes: z.number().int().positive().max(16 * 1024 * 1024).optional(),
+  },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+  },
+  handler: async (args, config) => readFile(args, config.cwd),
+};
+
+export const writeFileDefinition: ToolDefinition = {
+  name: "write_file",
+  title: "Write file",
+  description: "Write a local text file. This is destructive and should normally require MCP host approval.",
+  zodSchema: {
+    path: z.string(),
+    content: z.string(),
+    encoding: z.string().optional(),
+    createParents: z.boolean().optional(),
+  },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    openWorldHint: false,
+  },
+  handler: async (args, config) => {
+    if (!config.writeFileEnabled) {
+      throw new Error("write_file is disabled by current DiagBridge config");
+    }
+    return writeFile(args, config.cwd);
+  },
+};
