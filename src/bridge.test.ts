@@ -27,6 +27,8 @@ import { summarizeWindowsEvents, windowsEventSummary } from "./tools/windows-eve
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+
 
 test("MCP server version matches package.json version", () => {
   const packageJson = JSON.parse(
@@ -373,7 +375,10 @@ test("real stdio MCP client integration verifies initialize, tools/list, system_
   }
 });
 
-test("real stdio MCP client allows write_file and run_command when DIAGBRIDGE_MCP_TOOLS is explicitly set", async () => {
+test("real stdio MCP client allows write_file and run_command in isolated tempDir when DIAGBRIDGE_MCP_TOOLS is explicitly set", async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), "diagbridge-mcp-write-"));
+  const targetFile = join(tempDir, "hello.txt");
+
   const transport = new StdioClientTransport({
     command: "node",
     args: ["--experimental-strip-types", join(process.cwd(), "src/mcp/transports/stdio.ts")],
@@ -394,22 +399,22 @@ test("real stdio MCP client allows write_file and run_command when DIAGBRIDGE_MC
     assert.ok(toolNames.includes("write_file"));
     assert.ok(toolNames.includes("run_command"));
 
-    // 1. write_file to E:\DiagBridge-Test\hello.txt
+    // 1. write_file to isolated tempDir
     const writeResult = (await client.callTool({
       name: "write_file",
       arguments: {
-        path: "E:\\DiagBridge-Test\\hello.txt",
+        path: targetFile,
         content: "DiagBridge MCP write test",
       },
     })) as { isError?: boolean; content: Array<{ type: string; text: string }> };
     assert.equal(writeResult.isError, undefined);
     assert.match(writeResult.content[0].text, /bytesWritten/);
 
-    // 2. read_file from E:\DiagBridge-Test\hello.txt
+    // 2. read_file from isolated tempDir
     const readResult = (await client.callTool({
       name: "read_file",
       arguments: {
-        path: "E:\\DiagBridge-Test\\hello.txt",
+        path: targetFile,
         encoding: "utf8",
       },
     })) as { isError?: boolean; content: Array<{ type: string; text: string }> };
@@ -417,32 +422,146 @@ test("real stdio MCP client allows write_file and run_command when DIAGBRIDGE_MC
     const parsedRead = JSON.parse(readResult.content[0].text) as { content: string };
     assert.equal(parsedRead.content, "DiagBridge MCP write test");
 
-    // 3. run_command whoami.exe
-    const whoamiResult = (await client.callTool({
+    // 3. run_command using process.execPath (safe node execution)
+    const nodeExecResult = (await client.callTool({
       name: "run_command",
       arguments: {
-        command: "whoami.exe",
-        args: [],
+        command: process.execPath,
+        args: ["-e", "process.stdout.write('diagbridge-command-test')"],
       },
     })) as { isError?: boolean; content: Array<{ type: string; text: string }> };
-    assert.equal(whoamiResult.isError, undefined);
-    const parsedWhoami = JSON.parse(whoamiResult.content[0].text) as { stdout: string; exitCode: number };
-    assert.equal(parsedWhoami.exitCode, 0);
-    assert.ok(parsedWhoami.stdout.trim().length > 0);
+    assert.equal(nodeExecResult.isError, undefined);
+    const parsedNodeExec = JSON.parse(nodeExecResult.content[0].text) as { stdout: string; exitCode: number };
+    assert.equal(parsedNodeExec.exitCode, 0);
+    assert.equal(parsedNodeExec.stdout, "diagbridge-command-test");
 
-    // 4. run_command cmd.exe /d /c dir E:\DiagBridge-Test
-    const dirResult = (await client.callTool({
+    // 4. run_command using node script to verify hello.txt in tempDir
+    const checkFileResult = (await client.callTool({
       name: "run_command",
       arguments: {
-        command: "cmd.exe",
-        args: ["/d", "/c", "dir", "E:\\DiagBridge-Test"],
+        command: process.execPath,
+        args: ["-e", "console.log(require('node:fs').existsSync(process.argv[1]))", targetFile],
       },
     })) as { isError?: boolean; content: Array<{ type: string; text: string }> };
-    assert.equal(dirResult.isError, undefined);
-    const parsedDir = JSON.parse(dirResult.content[0].text) as { stdout: string; exitCode: number };
-    assert.equal(parsedDir.exitCode, 0);
-    assert.match(parsedDir.stdout, /hello\.txt/);
+    assert.equal(checkFileResult.isError, undefined);
+    const parsedCheckFile = JSON.parse(checkFileResult.content[0].text) as { stdout: string; exitCode: number };
+    assert.equal(parsedCheckFile.exitCode, 0);
+    assert.match(parsedCheckFile.stdout, /true/);
   } finally {
     await client.close();
+    await rm(tempDir, { recursive: true, force: true });
   }
+});
+
+test("real Remote MCP server over Streamable HTTP verifies 401 auth errors, valid token, 4 read-only tools, system_info, 3 sessions, and stop", async () => {
+  const token = "test-token-remote-mcp-2026-secret";
+  const config = loadRemoteMcpConfig({
+    DIAGBRIDGE_SESSION_TOKEN: token,
+  });
+  const audit = new AuditLog();
+
+  const server = createServer(async (req, res) => {
+    if (req.method === "POST" && req.url === "/mcp") {
+      const session = createSession(config.sessionToken);
+      if (!isRemoteMcpRequestAuthorized(req.headers, session, config.remoteDevNoAuth)) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "missing or invalid session token" }));
+        return;
+      }
+
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      const mcpServer = createDiagBridgeMcpServer(config, audit, REMOTE_MCP_TOOL_NAMES);
+
+      let cleanedUp = false;
+      const cleanup = () => {
+        if (!cleanedUp) {
+          cleanedUp = true;
+          Promise.allSettled([
+            transport.close(),
+            mcpServer.close(),
+          ]).catch(() => {});
+        }
+      };
+
+      res.once("finish", cleanup);
+      res.once("close", cleanup);
+
+      await mcpServer.connect(transport);
+      await transport.handleRequest(req, res);
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+
+  await new Promise<void>((resolvePromise) => server.listen(0, "127.0.0.1", resolvePromise));
+  const address = server.address() as AddressInfo;
+  const baseUrl = `http://127.0.0.1:${address.port}/mcp`;
+
+  try {
+    // 1. Missing token must return 401
+    const noTokenRes = await fetch(baseUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+    });
+    assert.equal(noTokenRes.status, 401);
+
+    // 2. Wrong token must return 401
+    const wrongTokenRes = await fetch(baseUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer wrong-token" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+    });
+    assert.equal(wrongTokenRes.status, 401);
+
+    // 3 & 4. Valid Bearer token initializes and returns 4 read-only tools via SDK StreamableHTTPClientTransport
+    const client1Transport = new StreamableHTTPClientTransport(new URL(baseUrl), {
+      requestInit: {
+        headers: { authorization: `Bearer ${token}` },
+      },
+    });
+    const client1 = new Client({ name: "client-1", version: "1.0.0" }, { capabilities: {} });
+    await client1.connect(client1Transport);
+
+    const listResult = await client1.listTools();
+    const toolNames = listResult.tools.map((t) => t.name).sort();
+    assert.deepEqual(toolNames, [...REMOTE_MCP_TOOL_NAMES].sort());
+    assert.equal(toolNames.includes("list_dir" as never), false);
+    assert.equal(toolNames.includes("read_file" as never), false);
+    assert.equal(toolNames.includes("write_file" as never), false);
+    assert.equal(toolNames.includes("run_command" as never), false);
+
+    // 5. Call system_info successfully
+    const callResult = (await client1.callTool({ name: "system_info", arguments: {} })) as { isError?: boolean; content: Array<{ type: string; text: string }> };
+    assert.equal(callResult.isError, undefined);
+    assert.match(callResult.content[0].text, /visibleBridge/);
+    await client1.close();
+
+
+    // 6. Connect 3 consecutive independent client sessions
+    for (let i = 1; i <= 3; i++) {
+      const clientSessionTransport = new StreamableHTTPClientTransport(new URL(baseUrl), {
+        requestInit: {
+          headers: { authorization: `Bearer ${token}` },
+        },
+      });
+      const clientSession = new Client({ name: `client-session-${i}`, version: "1.0.0" }, { capabilities: {} });
+      await clientSession.connect(clientSessionTransport);
+      const sessionList = await clientSession.listTools();
+      assert.equal(sessionList.tools.length, 4);
+      await clientSession.close();
+    }
+  } finally {
+    server.close();
+  }
+
+  // 7. After server is closed, new client connection fails
+  const closedTransport = new StreamableHTTPClientTransport(new URL(baseUrl), {
+    requestInit: {
+      headers: { authorization: `Bearer ${token}` },
+    },
+  });
+  const closedClient = new Client({ name: "client-closed", version: "1.0.0" }, { capabilities: {} });
+  await assert.rejects(() => closedClient.connect(closedTransport));
 });
