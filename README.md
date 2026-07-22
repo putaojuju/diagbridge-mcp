@@ -19,7 +19,8 @@ It exposes one shared tool registry through:
 | Entry point | Command / Script | Purpose |
 | --- | --- | --- |
 | Stdio MCP server (MCP Host) | `node --experimental-strip-types <path>/src/mcp/transports/stdio.ts` | Production integration for MCP hosts over stdio. |
-| Stdio MCP server (Manual Dev) | `npm run dev:mcp` | Manual CLI developer testing. |
+| Stdio MCP server (Manual Dev) | `npm run dev:mcp` | Manual process launch for development. |
+
 | Streamable HTTP MCP transport | `npm run dev:remote-mcp` | Remote MCP client integration over Streamable HTTP (`src/mcp/transports/streamable-http.ts`). |
 
 ## Tools Overview

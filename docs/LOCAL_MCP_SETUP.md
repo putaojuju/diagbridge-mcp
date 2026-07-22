@@ -16,14 +16,15 @@ npm run check
 npm test
 ```
 
-### Manual Developer Testing (CLI)
+### Manual Process Launch for Development
 
 ```bash
 npm run dev:mcp
 ```
 
 > [!NOTE]
-> `npm run dev:mcp` is for manual developer CLI testing only. Do not use `npm` in MCP host configurations because `npm` output may contaminate JSON-RPC stdout protocol traffic.
+> `npm run dev:mcp` is for manual process launch for development only. Do not use `npm` in MCP host configurations because `npm` output may contaminate JSON-RPC stdout protocol traffic.
+
 
 ## 2. MCP Host Configuration (Codex / Claude Code / Cursor)
 

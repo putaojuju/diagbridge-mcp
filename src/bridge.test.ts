@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { VERSION } from "./version.ts";
 import { AuditLog } from "./audit.ts";
 import {
   DEFAULT_HOST,
@@ -25,6 +27,14 @@ import { summarizeWindowsEvents, windowsEventSummary } from "./tools/windows-eve
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+
+test("MCP server version matches package.json version", () => {
+  const packageJson = JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  ) as { version: string };
+  assert.equal(VERSION, packageJson.version);
+});
+
 
 test("Tool registry keys match TOOL_NAMES exactly and each item has schema, annotations, and handler", () => {
   const registryKeys = Object.keys(TOOL_REGISTRY).sort();

@@ -1,4 +1,3 @@
-export const VERSION = "0.2.1";
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 8787;
 export const DEFAULT_REMOTE_MCP_PORT = 8787;
@@ -15,15 +14,6 @@ export const TOOL_NAMES = [
 ] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
 
-export const DEFAULT_ENABLED_TOOLS: ToolName[] = [
-  "system_info",
-  "list_dir",
-  "read_file",
-  "drive_inventory",
-  "junk_candidates",
-  "windows_event_summary",
-];
-
 export const LOCAL_MCP_TOOL_NAMES = [
   "system_info",
   "list_dir",
@@ -32,6 +22,9 @@ export const LOCAL_MCP_TOOL_NAMES = [
   "junk_candidates",
   "windows_event_summary",
 ] as const satisfies readonly ToolName[];
+
+export const DEFAULT_ENABLED_TOOLS: ToolName[] = [...LOCAL_MCP_TOOL_NAMES];
+
 
 export const REMOTE_MCP_TOOL_NAMES = [
   "system_info",
