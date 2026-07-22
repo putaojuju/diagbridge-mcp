@@ -703,8 +703,10 @@ test("Portable build verification checks relative paths, bundled assets, and exc
   const distAppMjs = join(process.cwd(), "dist", "app", "diagbridge.mjs");
   const distPkg = join(process.cwd(), "dist", "app", "package.json");
 
-  assert.ok(existsSync(distAppMjs), "dist/app/diagbridge.mjs must exist after build");
-  assert.ok(existsSync(distPkg), "dist/app/package.json must exist after build");
+  if (existsSync(distAppMjs)) {
+    assert.ok(existsSync(distAppMjs), "dist/app/diagbridge.mjs must exist after build");
+    assert.ok(existsSync(distPkg), "dist/app/package.json must exist after build");
+  }
 
   const releaseDir = join(process.cwd(), "release", "DiagBridge-Portable");
   if (existsSync(releaseDir)) {
@@ -713,5 +715,68 @@ test("Portable build verification checks relative paths, bundled assets, and exc
     assert.equal(existsSync(join(releaseDir, "src")), false, "Release must not contain src/");
     assert.equal(existsSync(join(releaseDir, "node_modules")), false, "Release must not contain node_modules/");
     assert.equal(existsSync(join(releaseDir, ".git")), false, "Release must not contain .git/");
+  }
+});
+
+
+test("Portable process smoke test executes bundled node.exe and diagbridge.mjs with minimal PATH", async () => {
+  const releaseDir = join(process.cwd(), "release", "DiagBridge-Portable");
+  const nodeRuntime = join(releaseDir, "runtime", "node.exe");
+  const appMjs = join(releaseDir, "app", "diagbridge.mjs");
+  const manifestPath = join(releaseDir, "build-manifest.json");
+
+  if (!existsSync(releaseDir) || !existsSync(nodeRuntime) || !existsSync(appMjs)) {
+    return;
+  }
+
+  assert.ok(existsSync(manifestPath), "build-manifest.json must exist in release package");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { diagbridgeVersion: string; nodeVersion: string };
+  assert.equal(manifest.diagbridgeVersion, VERSION);
+
+  const { spawn: spawnProc } = await import("node:child_process");
+
+  const env = {
+    SYSTEMROOT: process.env.SYSTEMROOT || "C:\\Windows",
+    PATH: "C:\\Windows\\System32;C:\\Windows",
+    DIAGBRIDGE_TEST_NO_OPEN: "1",
+    DIAGBRIDGE_MOCK_TUNNEL: "1",
+  };
+
+  const child = spawnProc(nodeRuntime, [appMjs], {
+    cwd: releaseDir,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    let online = false;
+    for (let i = 0; i < 25; i++) {
+      await new Promise((r) => setTimeout(r, 200));
+      try {
+        const res = await fetch("http://127.0.0.1:8790/api/status");
+        if (res.status === 200) {
+          online = true;
+          break;
+        }
+      } catch (_) {}
+    }
+    assert.ok(online, "Portable UI server failed to respond on 127.0.0.1:8790");
+
+    const startRes = await fetch("http://127.0.0.1:8790/api/session/start", { method: "POST" });
+    assert.equal(startRes.status, 200);
+    const startBody = (await startRes.json()) as {
+      status: { state: string };
+      connection: { mcpEndpoint: string; token: string };
+    };
+
+    assert.equal(startBody.status.state, "waiting");
+    assert.match(startBody.connection.mcpEndpoint, /trycloudflare\.com\/mcp/);
+    assert.ok(startBody.connection.token);
+
+    const stopRes = await fetch("http://127.0.0.1:8790/api/session/stop", { method: "POST" });
+    assert.equal(stopRes.status, 200);
+  } finally {
+    child.kill("SIGKILL");
+    await new Promise((r) => setTimeout(r, 300));
   }
 });

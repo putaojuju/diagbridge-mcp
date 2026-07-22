@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -13,10 +13,11 @@ export interface TunnelResult {
 export interface CloudflareTunnelOptions {
   binaryPath?: string;
   mockChildProcess?: ChildProcess;
+  onUnexpectedExit?: (reason: string) => void;
 }
 
 export function parseTunnelUrl(text: string): string | null {
-  if (!text || text.includes("error") && !text.includes("trycloudflare.com")) {
+  if (!text || (text.includes("error") && !text.includes("trycloudflare.com"))) {
     return null;
   }
   const match = text.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
@@ -50,6 +51,7 @@ export class CloudflareTunnel {
   private currentUrl: string | null = null;
   private currentMcpEndpoint: string | null = null;
   private binaryPathOverride?: string;
+  private onUnexpectedExit?: (reason: string) => void;
 
   constructor(options?: CloudflareTunnelOptions) {
     if (options?.binaryPath) {
@@ -58,6 +60,13 @@ export class CloudflareTunnel {
     if (options?.mockChildProcess) {
       this.childProcess = options.mockChildProcess;
     }
+    if (options?.onUnexpectedExit) {
+      this.onUnexpectedExit = options.onUnexpectedExit;
+    }
+  }
+
+  setUnexpectedExitHandler(handler: (reason: string) => void): void {
+    this.onUnexpectedExit = handler;
   }
 
   getStatus(): TunnelStatus {
@@ -137,12 +146,15 @@ export class CloudflareTunnel {
         });
 
         child.on("exit", (code) => {
+          const wasReady = this.status === "ready";
+          this.status = "stopped";
+          this.currentUrl = null;
+          this.currentMcpEndpoint = null;
+
           if (!resolved) {
             finishWithError(`cloudflared 进程意外退出，退出码: ${code ?? "null"}`);
-          } else {
-            this.status = "stopped";
-            this.currentUrl = null;
-            this.currentMcpEndpoint = null;
+          } else if (wasReady && this.onUnexpectedExit) {
+            this.onUnexpectedExit(`cloudflared 进程崩溃或被终止，退出码: ${code ?? "null"}`);
           }
         });
       } catch (err) {
@@ -155,12 +167,20 @@ export class CloudflareTunnel {
     this.status = "stopped";
     this.currentUrl = null;
     this.currentMcpEndpoint = null;
+
     if (this.childProcess) {
       const proc = this.childProcess;
       this.childProcess = null;
+
       try {
         proc.kill("SIGKILL");
       } catch (_) {}
+
+      if (proc.pid && process.platform === "win32") {
+        try {
+          execSync(`taskkill /F /T /PID ${proc.pid}`, { stdio: "ignore" });
+        } catch (_) {}
+      }
     }
   }
 }

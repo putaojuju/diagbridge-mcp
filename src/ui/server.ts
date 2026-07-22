@@ -14,6 +14,30 @@ const DEFAULT_UI_PORT = 8790;
 const __filename = fileURLToPath(import.meta.url);
 const PUBLIC_DIR = join(__filename, "..", "public");
 
+let expirationTimer: NodeJS.Timeout | null = null;
+
+function scheduleExpirationTimer(session: SessionState, tunnel: CloudflareTunnel) {
+  if (expirationTimer) {
+    clearTimeout(expirationTimer);
+    expirationTimer = null;
+  }
+
+  if (session.expiresAt) {
+    const delay = Math.max(0, new Date(session.expiresAt).getTime() - Date.now());
+    expirationTimer = setTimeout(() => {
+      stopSession(session, "session-expired");
+      tunnel.stop().catch(() => {});
+    }, delay);
+  }
+}
+
+function clearExpirationTimer() {
+  if (expirationTimer) {
+    clearTimeout(expirationTimer);
+    expirationTimer = null;
+  }
+}
+
 export function getCandidateEndpoints(remoteMcpPort = DEFAULT_REMOTE_MCP_PORT): string[] {
   const interfaces = networkInterfaces();
   const endpoints: string[] = [];
@@ -71,8 +95,11 @@ function sendFile(res: ServerResponse, filename: string, contentType: string): v
 
 export function formatStatusResponse(session: SessionState, tunnel?: CloudflareTunnel): Record<string, unknown> {
   const expired = checkAndExpireSession(session);
-  if (expired && tunnel) {
-    tunnel.stop().catch(() => {});
+  if (expired) {
+    clearExpirationTimer();
+    if (tunnel) {
+      tunnel.stop().catch(() => {});
+    }
   }
 
   return {
@@ -98,6 +125,11 @@ export function createUiServer(
   if (requestedHost && requestedHost !== UI_HOST) {
     throw new Error(`UI server is restricted to 127.0.0.1 and cannot bind to ${requestedHost}`);
   }
+
+  tunnel.setUnexpectedExitHandler((reason) => {
+    stopSession(session, "tunnel-exited");
+    clearExpirationTimer();
+  });
 
   const server = createServer(async (req, res) => {
     const url = req.url ?? "/";
@@ -139,6 +171,7 @@ export function createUiServer(
         const tunnelRes = await tunnel.start(`http://127.0.0.1:${remoteMcpPort}`);
         if (tunnelRes.error) {
           stopSession(session, "tunnel-start-failed");
+          clearExpirationTimer();
           await tunnel.stop();
           sendJson(res, 500, { error: tunnelRes.error });
           return;
@@ -147,6 +180,8 @@ export function createUiServer(
           publicEndpoint = tunnelRes.mcpEndpoint;
         }
       }
+
+      scheduleExpirationTimer(session, tunnel);
 
       const lanEndpoints = getCandidateEndpoints(remoteMcpPort);
       const allCandidateEndpoints = [...new Set([publicEndpoint, ...lanEndpoints])];
@@ -170,6 +205,7 @@ export function createUiServer(
       }
 
       stopSession(session);
+      clearExpirationTimer();
       await tunnel.stop();
       sendJson(res, 200, {
         status: formatStatusResponse(session, tunnel),

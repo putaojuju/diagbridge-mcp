@@ -1,10 +1,20 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { get } from "node:https";
 import { join } from "node:path";
 
-const NODE_WIN_URL = "https://nodejs.org/dist/v22.13.0/win-x64/node.exe";
-const CLOUDFLARED_WIN_URL = "https://github.com/cloudflare/cloudflared/releases/download/2025.2.1/cloudflared-windows-amd64.exe";
+const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+const DIAGBRIDGE_VERSION = pkg.version;
+
+const NODE_VERSION = "22.13.0";
+const NODE_WIN_URL = `https://nodejs.org/dist/v${NODE_VERSION}/win-x64/node.exe`;
+const NODE_EXPECTED_SHA256 = "364dbc8442f8d5c04fd4226bcfcf8e60d3268627eb1d7be214a91bb7d74cdbb9";
+
+const CLOUDFLARED_VERSION = "2025.2.1";
+const CLOUDFLARED_WIN_URL = `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-windows-amd64.exe`;
+const CLOUDFLARED_EXPECTED_SHA256 = "c5479e3ad7a78ba21b1bc56ed2742df2da74bf28612c34c7a7a8a98edc6682f2";
+
+const ALLOW_LOCAL_RUNTIME = process.env.DIAGBRIDGE_PORTABLE_ALLOW_LOCAL_RUNTIME === "1";
 
 function sha256(filePath) {
   const buffer = readFileSync(filePath);
@@ -16,10 +26,10 @@ function safeCopyFileSync(src, dest) {
     copyFileSync(src, dest);
   } catch (err) {
     if (err.code === "EBUSY" || err.code === "EPERM") {
-      console.warn(`File ${dest} is currently locked or in use, skipping overwrite.`);
-    } else {
-      throw err;
+      console.error(`ERROR: Destination file ${dest} is locked or in use.`);
+      process.exit(1);
     }
+    throw err;
   }
 }
 
@@ -43,73 +53,140 @@ function downloadFile(url, destPath) {
   });
 }
 
-async function prepareBinaries() {
-  mkdirSync("tools", { recursive: true });
-  mkdirSync("cache", { recursive: true });
+async function verifyOrDownloadBinary(name, url, expectedSha256, cachePath) {
+  const partPath = `${cachePath}.part`;
 
-  const cachedNodePath = join("cache", "node.exe");
-  const cachedCloudflaredPath = join("cache", "cloudflared.exe");
-
-  // 1. Ensure node.exe
-  if (!existsSync(cachedNodePath)) {
-    console.log(`Downloading bundled Node.exe from ${NODE_WIN_URL}...`);
-    try {
-      await downloadFile(NODE_WIN_URL, cachedNodePath);
-      console.log(`Downloaded Node.exe SHA256: ${sha256(cachedNodePath)}`);
-    } catch (err) {
-      console.warn(`Download node.exe failed (${err instanceof Error ? err.message : String(err)}), copying process.execPath as fallback.`);
-      safeCopyFileSync(process.execPath, cachedNodePath);
+  if (existsSync(cachePath)) {
+    const hash = sha256(cachePath);
+    if (hash.toLowerCase() === expectedSha256.toLowerCase()) {
+      console.log(`[OK] Cached ${name} SHA-256 verified (${hash.slice(0, 12)}...)`);
+      return cachePath;
     }
+    console.warn(`[WARN] Cached ${name} SHA-256 mismatch (got ${hash}, expected ${expectedSha256}). Re-downloading...`);
+    rmSync(cachePath, { force: true });
   }
 
-  // 2. Ensure cloudflared.exe
-  if (!existsSync(cachedCloudflaredPath)) {
-    console.log(`Downloading cloudflared.exe from ${CLOUDFLARED_WIN_URL}...`);
-    try {
-      await downloadFile(CLOUDFLARED_WIN_URL, cachedCloudflaredPath);
-      console.log(`Downloaded cloudflared.exe SHA256: ${sha256(cachedCloudflaredPath)}`);
-    } catch (err) {
-      console.warn(`Download cloudflared.exe failed (${err instanceof Error ? err.message : String(err)}).`);
+  console.log(`Downloading ${name} from ${url}...`);
+  try {
+    await downloadFile(url, partPath);
+    const downloadedHash = sha256(partPath);
+    if (downloadedHash.toLowerCase() !== expectedSha256.toLowerCase()) {
+      rmSync(partPath, { force: true });
+      throw new Error(`SHA-256 verification failed for ${name}! Got: ${downloadedHash}, Expected: ${expectedSha256}`);
     }
+    renameSync(partPath, cachePath);
+    console.log(`[OK] ${name} downloaded and SHA-256 verified (${downloadedHash.slice(0, 12)}...)`);
+    return cachePath;
+  } catch (err) {
+    if (existsSync(partPath)) {
+      rmSync(partPath, { force: true });
+    }
+    if (ALLOW_LOCAL_RUNTIME) {
+      console.warn(`[WARN] ${name} download/verification failed (${err.message}). DIAGBRIDGE_PORTABLE_ALLOW_LOCAL_RUNTIME=1 is active, using fallback.`);
+      return null;
+    }
+    console.error(`❌ FATAL BUILD ERROR: ${name} download or SHA-256 verification failed: ${err.message}`);
+    process.exit(1);
+  }
+}
+
+function cleanOldBuilds() {
+  console.log("Cleaning old release build directories...");
+  rmSync(join("release", "DiagBridge-Portable"), { recursive: true, force: true });
+
+
+  const releaseDir = join("release");
+  if (existsSync(releaseDir)) {
+    try {
+      const { readdirSync } = require("node:fs");
+      const files = readdirSync(releaseDir);
+      for (const file of files) {
+        if (file.endsWith(".zip")) {
+          rmSync(join(releaseDir, file), { force: true });
+        }
+      }
+    } catch (_) {}
+  }
+}
+
+function generateThirdPartyNotices() {
+  let lockJson = {};
+  try {
+    lockJson = JSON.parse(readFileSync("package-lock.json", "utf8"));
+  } catch (_) {}
+
+  const packages = lockJson.packages || {};
+  const notices = [];
+
+  notices.push(`DiagBridge Portable Third-Party Notices & Licenses`);
+  notices.push(`==================================================\n`);
+  notices.push(`1. Node.js Executable`);
+  notices.push(`   Version: ${NODE_VERSION}`);
+  notices.push(`   Source: https://nodejs.org/`);
+  notices.push(`   SHA-256: ${NODE_EXPECTED_SHA256}`);
+  notices.push(`   License: MIT License (https://github.com/nodejs/node/blob/main/LICENSE)\n`);
+
+  notices.push(`2. Cloudflare Cloudflared Executable`);
+  notices.push(`   Version: ${CLOUDFLARED_VERSION}`);
+  notices.push(`   Source: https://github.com/cloudflare/cloudflared`);
+  notices.push(`   SHA-256: ${CLOUDFLARED_EXPECTED_SHA256}`);
+  notices.push(`   License: Apache License 2.0 (https://github.com/cloudflare/cloudflared/blob/master/LICENSE)\n`);
+
+  notices.push(`3. Bundled NPM Dependencies:`);
+
+  for (const [pkgPath, info] of Object.entries(packages)) {
+    if (!pkgPath || pkgPath === "") continue;
+    const name = pkgPath.replace(/^node_modules\//, "");
+    const version = info.version || "unknown";
+    const license = info.license || "See package repository";
+    notices.push(`   - ${name} (v${version}) [License: ${license}]`);
   }
 
-  // Copy cloudflared to tools/
-  if (existsSync(cachedCloudflaredPath)) {
-    safeCopyFileSync(cachedCloudflaredPath, join("tools", "cloudflared.exe"));
-  }
+  return notices.join("\n");
 }
 
 async function buildPortable() {
   console.log("=== Building DiagBridge Portable Release Package ===");
 
-  await prepareBinaries();
+  cleanOldBuilds();
+
+  mkdirSync("cache", { recursive: true });
+  mkdirSync("tools", { recursive: true });
+
+  const cachedNodePath = join("cache", `node-${NODE_VERSION}.exe`);
+  const cachedCloudflaredPath = join("cache", `cloudflared-${CLOUDFLARED_VERSION}.exe`);
+
+  const nodeVerified = await verifyOrDownloadBinary("Node.exe", NODE_WIN_URL, NODE_EXPECTED_SHA256, cachedNodePath);
+  const cloudflaredVerified = await verifyOrDownloadBinary("cloudflared.exe", CLOUDFLARED_WIN_URL, CLOUDFLARED_EXPECTED_SHA256, cachedCloudflaredPath);
 
   const releaseDir = join("release", "DiagBridge-Portable");
   mkdirSync(join(releaseDir, "runtime"), { recursive: true });
   mkdirSync(join(releaseDir, "app"), { recursive: true });
   mkdirSync(join(releaseDir, "tools"), { recursive: true });
 
-  // 1. Copy app
+  // Copy app
   cpSync("dist/app", join(releaseDir, "app"), { recursive: true });
 
-  // 2. Copy runtime node.exe
-  const cachedNodePath = join("cache", "node.exe");
-  if (existsSync(cachedNodePath)) {
-    safeCopyFileSync(cachedNodePath, join(releaseDir, "runtime", "node.exe"));
+  // Copy node.exe
+  if (nodeVerified && existsSync(nodeVerified)) {
+    safeCopyFileSync(nodeVerified, join(releaseDir, "runtime", "node.exe"));
   } else {
     safeCopyFileSync(process.execPath, join(releaseDir, "runtime", "node.exe"));
   }
 
-  // 3. Copy tools cloudflared.exe
-  const cachedCloudflaredPath = join("cache", "cloudflared.exe");
-  if (existsSync(cachedCloudflaredPath)) {
-    safeCopyFileSync(cachedCloudflaredPath, join(releaseDir, "tools", "cloudflared.exe"));
+  // Copy cloudflared.exe
+  if (cloudflaredVerified && existsSync(cloudflaredVerified)) {
+    safeCopyFileSync(cloudflaredVerified, join(releaseDir, "tools", "cloudflared.exe"));
+    safeCopyFileSync(cloudflaredVerified, join("tools", "cloudflared.exe"));
+  } else {
+    console.error("❌ FATAL: cloudflared.exe is missing. Portable package cannot be generated.");
+    process.exit(1);
   }
 
-  // 4. Create 启动 DiagBridge.cmd using ONLY relative paths
+  // Create launcher batch script
   const launcherContent = `@echo off
 cd /d "%~dp0"
-title DiagBridge 远程诊断桥
+title DiagBridge 远程诊断桥 v${DIAGBRIDGE_VERSION}
 echo ==================================================
 echo 🛡️ 正在启动 DiagBridge 本地控制面板...
 echo ==================================================
@@ -118,29 +195,20 @@ pause
 `;
   writeFileSync(join(releaseDir, "启动 DiagBridge.cmd"), launcherContent, "utf8");
 
-  // 5. Create THIRD_PARTY_NOTICES.txt
-  const noticesContent = `DiagBridge Portable Third-Party Notices & Licenses
-==================================================
+  // Create THIRD_PARTY_NOTICES.txt
+  writeFileSync(join(releaseDir, "THIRD_PARTY_NOTICES.txt"), generateThirdPartyNotices(), "utf8");
 
-1. Node.js (https://nodejs.org/)
-   Version: 22.13.0 / Portable Executable
-   License: MIT License
-
-2. Cloudflare Cloudflared (https://github.com/cloudflare/cloudflared)
-   Version: 2025.2.1
-   License: Apache License 2.0
-
-3. Model Context Protocol SDK (@modelcontextprotocol/sdk)
-   License: MIT License
-`;
-  writeFileSync(join(releaseDir, "THIRD_PARTY_NOTICES.txt"), noticesContent, "utf8");
-
-  // 6. Create 使用说明.txt
-  const readmeContent = `DiagBridge 绿色免安装诊断工具包 - 使用说明
+  // Create 使用说明.txt
+  const readmeContent = `DiagBridge 绿色免安装诊断工具包 v${DIAGBRIDGE_VERSION} - 使用说明
 ==================================================
 
 【适用环境】
 Windows 10 / 11 64位系统 (无需安装 Node.js、Git 或 npm)。
+
+【组件版本】
+- DiagBridge MCP: v${DIAGBRIDGE_VERSION}
+- Node.js Runtime: v${NODE_VERSION}
+- Cloudflare Tunnel: v${CLOUDFLARED_VERSION}
 
 【使用步骤】
 1. 解压全套 Zip 文件到任意文件夹；
@@ -149,7 +217,7 @@ Windows 10 / 11 64位系统 (无需安装 Node.js、Git 或 npm)。
 4. 点击页面上的“▶ 开始诊断”按钮；
 5. 系统将自动建立加密 HTTPS 远程通道并生成一次性密钥；
 6. 点击“📋 复制连接信息”发送给远程工程师即可；
-7. 诊断完成后，点击“⏹ 结束诊断”或直接关闭窗口，远程通道立即失效。
+7. 诊断完成后，点击“⏹ 结束诊断”或直接关闭窗口，远程通道及进程立即完全作废销毁。
 
 【安全防护说明】
 - 远程仅开放 system_info, drive_inventory, junk_candidates, windows_event_summary 4个只读工具。
@@ -157,8 +225,19 @@ Windows 10 / 11 64位系统 (无需安装 Node.js、Git 或 npm)。
 `;
   writeFileSync(join(releaseDir, "使用说明.txt"), readmeContent, "utf8");
 
-  // 7. Compress into ZIP archive
-  const zipPath = join("release", "DiagBridge-Portable-v0.2.1.zip");
+  // Create build-manifest.json
+  const manifest = {
+    diagbridgeVersion: DIAGBRIDGE_VERSION,
+    nodeVersion: NODE_VERSION,
+    nodeSha256: NODE_EXPECTED_SHA256,
+    cloudflaredVersion: CLOUDFLARED_VERSION,
+    cloudflaredSha256: CLOUDFLARED_EXPECTED_SHA256,
+    builtAt: new Date().toISOString(),
+  };
+  writeFileSync(join(releaseDir, "build-manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
+
+  // Compress into ZIP archive using package version
+  const zipPath = join("release", `DiagBridge-Portable-v${DIAGBRIDGE_VERSION}.zip`);
   console.log(`Compressing ${releaseDir} into ${zipPath}...`);
   try {
     const { execSync } = await import("node:child_process");
