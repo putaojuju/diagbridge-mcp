@@ -241,7 +241,7 @@ test("windows_event_summary does not accept arbitrary command input", async () =
   await assert.rejects(() => windowsEventSummary({ command: "Get-Process" }), /does not accept arbitrary command/i);
 });
 
-test("windows event summary assigns each event to one matching diagnostic category", () => {
+test("windows event summary assigns each event to one matching diagnostic category with new field names", () => {
   const event = (logName: string, providerName: string, eventId: number) => ({
     logName,
     providerName,
@@ -258,16 +258,23 @@ test("windows event summary assigns each event to one matching diagnostic catego
     event("System", "Microsoft-Windows-WHEA-Logger", 17),
     event("System", "Disk", 17),
     event("Application", "Application Error", 1000),
+    event("Application", "Windows Error Reporting", 1001),
     event("System", "EventLog", 6008),
   ]);
 
   assert.deepEqual(summary, {
-    applicationCrashes: 1,
-    unexpectedShutdowns: 2,
-    hardwareErrors: 1,
-    diskErrors: 1,
+    applicationCrashEvents: 2,
+    unexpectedShutdownEvents: 2,
+    hardwareErrorEvents: 1,
+    diskErrorEvents: 1,
   });
+
+  assert.equal(Object.hasOwn(summary, "applicationCrashes"), false);
+  assert.equal(Object.hasOwn(summary, "unexpectedShutdowns"), false);
+  assert.equal(Object.hasOwn(summary, "hardwareErrors"), false);
+  assert.equal(Object.hasOwn(summary, "diskErrors"), false);
 });
+
 
 test("consecutive independent HTTP MCP requests in stateless mode work correctly", async () => {
   const config = loadRemoteMcpConfig({ DIAGBRIDGE_REMOTE_DEV_NO_AUTH: "1" });
@@ -386,6 +393,55 @@ test("real stdio MCP client allows write_file and run_command when DIAGBRIDGE_MC
     assert.equal(toolNames.length, 8);
     assert.ok(toolNames.includes("write_file"));
     assert.ok(toolNames.includes("run_command"));
+
+    // 1. write_file to E:\DiagBridge-Test\hello.txt
+    const writeResult = (await client.callTool({
+      name: "write_file",
+      arguments: {
+        path: "E:\\DiagBridge-Test\\hello.txt",
+        content: "DiagBridge MCP write test",
+      },
+    })) as { isError?: boolean; content: Array<{ type: string; text: string }> };
+    assert.equal(writeResult.isError, undefined);
+    assert.match(writeResult.content[0].text, /bytesWritten/);
+
+    // 2. read_file from E:\DiagBridge-Test\hello.txt
+    const readResult = (await client.callTool({
+      name: "read_file",
+      arguments: {
+        path: "E:\\DiagBridge-Test\\hello.txt",
+        encoding: "utf8",
+      },
+    })) as { isError?: boolean; content: Array<{ type: string; text: string }> };
+    assert.equal(readResult.isError, undefined);
+    const parsedRead = JSON.parse(readResult.content[0].text) as { content: string };
+    assert.equal(parsedRead.content, "DiagBridge MCP write test");
+
+    // 3. run_command whoami.exe
+    const whoamiResult = (await client.callTool({
+      name: "run_command",
+      arguments: {
+        command: "whoami.exe",
+        args: [],
+      },
+    })) as { isError?: boolean; content: Array<{ type: string; text: string }> };
+    assert.equal(whoamiResult.isError, undefined);
+    const parsedWhoami = JSON.parse(whoamiResult.content[0].text) as { stdout: string; exitCode: number };
+    assert.equal(parsedWhoami.exitCode, 0);
+    assert.ok(parsedWhoami.stdout.trim().length > 0);
+
+    // 4. run_command cmd.exe /d /c dir E:\DiagBridge-Test
+    const dirResult = (await client.callTool({
+      name: "run_command",
+      arguments: {
+        command: "cmd.exe",
+        args: ["/d", "/c", "dir", "E:\\DiagBridge-Test"],
+      },
+    })) as { isError?: boolean; content: Array<{ type: string; text: string }> };
+    assert.equal(dirResult.isError, undefined);
+    const parsedDir = JSON.parse(dirResult.content[0].text) as { stdout: string; exitCode: number };
+    assert.equal(parsedDir.exitCode, 0);
+    assert.match(parsedDir.stdout, /hello\.txt/);
   } finally {
     await client.close();
   }

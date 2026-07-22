@@ -13,13 +13,18 @@ export interface WindowsEventSummaryEntry {
 
 export interface WindowsEventSummaryResult {
   sinceDays: number;
-  events: WindowsEventSummaryEntry[];
+  returnedEventRecords: number;
+  maxEvents: number;
+  truncated: boolean;
+  countMeaning: "event_records_not_unique_incidents";
+  summaryScope: "returned_event_records";
   summary: {
-    applicationCrashes: number;
-    unexpectedShutdowns: number;
-    hardwareErrors: number;
-    diskErrors: number;
+    applicationCrashEvents: number;
+    unexpectedShutdownEvents: number;
+    hardwareErrorEvents: number;
+    diskErrorEvents: number;
   };
+  events: WindowsEventSummaryEntry[];
   warning?: string;
 }
 
@@ -49,16 +54,21 @@ function requestedLogs(args: Record<string, unknown>): string[] {
   return filtered.length > 0 ? [...new Set(filtered)] : ["Application", "System"];
 }
 
-function emptySummary(sinceDays: number, warning?: string): WindowsEventSummaryResult {
+function emptySummary(sinceDays: number, maxEvents: number, warning?: string): WindowsEventSummaryResult {
   return {
     sinceDays,
-    events: [],
+    returnedEventRecords: 0,
+    maxEvents,
+    truncated: false,
+    countMeaning: "event_records_not_unique_incidents",
+    summaryScope: "returned_event_records",
     summary: {
-      applicationCrashes: 0,
-      unexpectedShutdowns: 0,
-      hardwareErrors: 0,
-      diskErrors: 0,
+      applicationCrashEvents: 0,
+      unexpectedShutdownEvents: 0,
+      hardwareErrorEvents: 0,
+      diskErrorEvents: 0,
     },
+    events: [],
     warning,
   };
 }
@@ -78,22 +88,22 @@ function classifyEvent(event: WindowsEventSummaryEntry): SummaryCategory | undef
     (isApplicationLog && (provider === "application error" || provider === "windows error reporting" || provider.includes("wer"))) ||
     (isApplicationLog && [1000, 1001].includes(event.eventId))
   ) {
-    return "applicationCrashes";
+    return "applicationCrashEvents";
   }
 
   if (
     (provider.includes("kernel-power") && event.eventId === 41) ||
     (isSystemLog && provider === "eventlog" && event.eventId === 6008)
   ) {
-    return "unexpectedShutdowns";
+    return "unexpectedShutdownEvents";
   }
 
   if (provider.includes("whea")) {
-    return "hardwareErrors";
+    return "hardwareErrorEvents";
   }
 
   if (/disk|ntfs|storahci|stornvme|nvme/i.test(provider)) {
-    return "diskErrors";
+    return "diskErrorEvents";
   }
 
   return undefined;
@@ -101,10 +111,10 @@ function classifyEvent(event: WindowsEventSummaryEntry): SummaryCategory | undef
 
 export function summarizeWindowsEvents(events: WindowsEventSummaryEntry[]): WindowsEventSummaryResult["summary"] {
   const summary = {
-    applicationCrashes: 0,
-    unexpectedShutdowns: 0,
-    hardwareErrors: 0,
-    diskErrors: 0,
+    applicationCrashEvents: 0,
+    unexpectedShutdownEvents: 0,
+    hardwareErrorEvents: 0,
+    diskErrorEvents: 0,
   };
 
   for (const event of events) {
@@ -117,7 +127,7 @@ export function summarizeWindowsEvents(events: WindowsEventSummaryEntry[]): Wind
   return summary;
 }
 
-async function runFixedPowerShellEventQuery(sinceDays: number, logs: string[], maxEvents: number): Promise<WindowsEventSummaryEntry[]> {
+async function runFixedPowerShellEventQuery(sinceDays: number, logs: string[], queryLimit: number): Promise<WindowsEventSummaryEntry[]> {
   const logsLiteral = logs.map((log) => `'${log.replace(/'/g, "''")}'`).join(",");
   const providersLiteral = WATCH_PROVIDERS.map((provider) => `'${provider.replace(/'/g, "''")}'`).join(",");
   const command = `
@@ -127,6 +137,7 @@ $ErrorActionPreference = 'Stop'
 $since = (Get-Date).AddDays(-${sinceDays})
 $logs = @(${logsLiteral})
 $providers = @(${providersLiteral})
+$limit = ${queryLimit}
 $all = foreach ($log in $logs) {
   Get-WinEvent -FilterHashtable @{ LogName = $log; StartTime = $since } -ErrorAction SilentlyContinue |
     Where-Object {
@@ -135,9 +146,9 @@ $all = foreach ($log in $logs) {
       ($_.ProviderName -eq 'Microsoft-Windows-Kernel-Power' -and $_.Id -eq 41) -or
       ($_.ProviderName -eq 'EventLog' -and $_.Id -eq 6008)
     } |
-    Select-Object -First ${maxEvents} @{Name='timeCreated';Expression={$_.TimeCreated.ToString('o')}}, @{Name='logName';Expression={$_.LogName}}, @{Name='providerName';Expression={$_.ProviderName}}, @{Name='eventId';Expression={$_.Id}}, @{Name='level';Expression={$_.LevelDisplayName}}, @{Name='messageSnippet';Expression={ if ($_.Message) { ($_.Message -replace '\\s+',' ').Substring(0, [Math]::Min(500, ($_.Message -replace '\\s+',' ').Length)) } else { '' } }}
+    Select-Object -First $limit @{Name='timeCreated';Expression={$_.TimeCreated.ToString('o')}}, @{Name='logName';Expression={$_.LogName}}, @{Name='providerName';Expression={$_.ProviderName}}, @{Name='eventId';Expression={$_.Id}}, @{Name='level';Expression={$_.LevelDisplayName}}, @{Name='messageSnippet';Expression={ if ($_.Message) { ($_.Message -replace '\\s+',' ').Substring(0, [Math]::Min(500, ($_.Message -replace '\\s+',' ').Length)) } else { '' } }}
 }
-$all | Sort-Object timeCreated -Descending | Select-Object -First ${maxEvents} | ConvertTo-Json -Depth 4 -Compress
+$all | Sort-Object timeCreated -Descending | Select-Object -First $limit | ConvertTo-Json -Depth 4 -Compress
 `;
 
   return new Promise((resolvePromise, reject) => {
@@ -203,18 +214,26 @@ export async function windowsEventSummary(args: Record<string, unknown>): Promis
   const maxEvents = numberArg(args, "maxEvents", 200, 1, 500);
 
   if (process.platform !== "win32") {
-    return emptySummary(sinceDays, "windows_event_summary is only available on Windows; no query was run on this platform.");
+    return emptySummary(sinceDays, maxEvents, "windows_event_summary is only available on Windows; no query was run on this platform.");
   }
 
   try {
-    const events = await runFixedPowerShellEventQuery(sinceDays, logs, maxEvents);
+    const rawEvents = await runFixedPowerShellEventQuery(sinceDays, logs, maxEvents + 1);
+    const truncated = rawEvents.length > maxEvents;
+    const events = truncated ? rawEvents.slice(0, maxEvents) : rawEvents;
+
     return {
       sinceDays,
-      events,
+      returnedEventRecords: events.length,
+      maxEvents,
+      truncated,
+      countMeaning: "event_records_not_unique_incidents",
+      summaryScope: "returned_event_records",
       summary: summarizeWindowsEvents(events),
+      events,
     };
   } catch (error) {
-    return emptySummary(sinceDays, error instanceof Error ? error.message : "Windows event query failed");
+    return emptySummary(sinceDays, maxEvents, error instanceof Error ? error.message : "Windows event query failed");
   }
 }
 

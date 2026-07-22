@@ -31,7 +31,9 @@ DiagBridge MCP exposes a single, unified Tool Registry (`src/mcp/tool-registry.t
 
 ### 4. `windows_event_summary`
 - **Description**: Queries recent Windows Application/System event logs using a fixed, hardcoded PowerShell query.
+- **Fields**: Returns `returnedEventRecords`, `maxEvents`, `truncated`, `countMeaning: "event_records_not_unique_incidents"`, `summaryScope: "returned_event_records"`, and category counts in `summary` (`applicationCrashEvents`, `unexpectedShutdownEvents`, `hardwareErrorEvents`, `diskErrorEvents`).
 - **Safety**: Does not accept arbitrary commands. Bounded event count and message snippet size.
+
 
 ### 5. `list_dir`
 - **Description**: Lists files and directories in a local path.
