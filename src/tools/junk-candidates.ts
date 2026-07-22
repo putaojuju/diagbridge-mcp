@@ -1,6 +1,7 @@
 import { extname, basename } from "node:path";
 import { readdir, stat } from "node:fs/promises";
-import type { ToolMetadata } from "../config.ts";
+import * as z from "zod/v4";
+import type { BridgeConfig, ToolDefinition, ToolMetadata } from "../config.ts";
 import { driveInventory, expandWindowsEnv, resolveScanRoot, DEFAULT_EXCLUDE_PATHS } from "./drive-inventory.ts";
 
 export type JunkReason = "old_temp_files" | "installer_download" | "crash_dump" | "old_log" | "empty_directory";
@@ -20,26 +21,6 @@ export interface JunkCandidatesResult {
   totalEstimatedBytes: number;
   note: string;
 }
-
-export const junkCandidatesTool: ToolMetadata = {
-  name: "junk_candidates",
-  title: "Junk candidates",
-  description: "Read-only scan for possible junk candidates. It does not delete, move, or clean files; every result is review_only.",
-  inputSchema: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      roots: { type: "array", items: { type: "string" }, default: ["%TEMP%", "%LOCALAPPDATA%\\Temp", "C:\\Windows\\Temp", "%USERPROFILE%\\Downloads"] },
-      olderThanDays: { type: "number", default: 14 },
-      maxEntries: { type: "number", default: 5000 },
-    },
-  },
-  annotations: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    openWorldHint: false,
-  },
-};
 
 const DEFAULT_ROOTS = ["%TEMP%", "%LOCALAPPDATA%\\Temp", "C:\\Windows\\Temp", "%USERPROFILE%\\Downloads"];
 export const DANGEROUS_CLEANUP_ROOTS = [
@@ -186,3 +167,37 @@ export async function junkCandidates(args: Record<string, unknown>, cwd = proces
     note: "Candidates are review_only. DiagBridge did not delete, move, or clean anything.",
   };
 }
+
+export const junkCandidatesDefinition: ToolDefinition = {
+  name: "junk_candidates",
+  title: "Junk candidates",
+  description: "Read-only scan for possible junk candidates. It does not delete, move, or clean files; every result is review_only.",
+  zodSchema: {
+    roots: z.array(z.string()).optional(),
+    olderThanDays: z.number().int().min(1).max(3650).optional(),
+    maxEntries: z.number().int().min(1).max(100_000).optional(),
+  },
+  jsonSchema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      roots: { type: "array", items: { type: "string" }, default: DEFAULT_ROOTS },
+      olderThanDays: { type: "number", default: 14 },
+      maxEntries: { type: "number", default: 5000 },
+    },
+  },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+  },
+  handler: async (args, config) => junkCandidates(args, config.cwd),
+};
+
+export const junkCandidatesTool: ToolMetadata = {
+  name: junkCandidatesDefinition.name,
+  title: junkCandidatesDefinition.title,
+  description: junkCandidatesDefinition.description,
+  inputSchema: junkCandidatesDefinition.jsonSchema,
+  annotations: junkCandidatesDefinition.annotations,
+};

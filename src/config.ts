@@ -1,6 +1,8 @@
+import type { z } from "zod/v4";
+
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 8787;
-export const DEFAULT_HTTP_MCP_PORT = 8787;
+export const DEFAULT_REMOTE_MCP_PORT = 8787;
 
 export const TOOL_NAMES = [
   "system_info",
@@ -32,7 +34,7 @@ export const LOCAL_MCP_TOOL_NAMES = [
   "windows_event_summary",
 ] as const satisfies readonly ToolName[];
 
-export const HTTP_CONNECTOR_TOOL_NAMES = [
+export const REMOTE_MCP_TOOL_NAMES = [
   "system_info",
   "drive_inventory",
   "junk_candidates",
@@ -51,7 +53,7 @@ export interface BridgeConfig {
   visible: true;
   runCommandEnabled: boolean;
   writeFileEnabled: boolean;
-  httpDevNoAuth: boolean;
+  remoteDevNoAuth: boolean;
 }
 
 export interface ToolAnnotations {
@@ -66,6 +68,16 @@ export interface ToolMetadata {
   description: string;
   inputSchema: Record<string, unknown>;
   annotations: ToolAnnotations;
+}
+
+export interface ToolDefinition {
+  name: ToolName;
+  title: string;
+  description: string;
+  zodSchema: Record<string, z.ZodType>;
+  jsonSchema: Record<string, unknown>;
+  annotations: ToolAnnotations;
+  handler: (args: Record<string, unknown>, config: BridgeConfig) => Promise<unknown>;
 }
 
 export function isToolName(value: string): value is ToolName {
@@ -86,12 +98,21 @@ export function parseEnabledTools(value: string | undefined): ToolName[] {
   return parsed.length > 0 ? [...new Set(parsed)] : [...DEFAULT_ENABLED_TOOLS];
 }
 
-export function isHttpDevNoAuthEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return env.DIAGBRIDGE_HTTP_DEV_NO_AUTH === "1";
+export function isRemoteDevNoAuthEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  if (env.DIAGBRIDGE_HTTP_DEV_NO_AUTH !== undefined && env.DIAGBRIDGE_REMOTE_DEV_NO_AUTH === undefined) {
+    console.warn("DEPRECATION NOTICE: DIAGBRIDGE_HTTP_DEV_NO_AUTH is deprecated. Use DIAGBRIDGE_REMOTE_DEV_NO_AUTH instead.");
+    return env.DIAGBRIDGE_HTTP_DEV_NO_AUTH === "1";
+  }
+  return env.DIAGBRIDGE_REMOTE_DEV_NO_AUTH === "1";
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): BridgeConfig {
-  const enabledTools = parseEnabledTools(env.DIAGBRIDGE_TOOLS);
+  const toolsEnv = env.DIAGBRIDGE_MCP_TOOLS ?? env.DIAGBRIDGE_TOOLS;
+  if (env.DIAGBRIDGE_TOOLS !== undefined && env.DIAGBRIDGE_MCP_TOOLS === undefined) {
+    console.warn("DEPRECATION NOTICE: DIAGBRIDGE_TOOLS is deprecated for MCP tools config. Use DIAGBRIDGE_MCP_TOOLS instead.");
+  }
+
+  const enabledTools = parseEnabledTools(toolsEnv);
   const port = Number(env.DIAGBRIDGE_PORT ?? DEFAULT_PORT);
 
   return {
@@ -104,22 +125,33 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     visible: true,
     runCommandEnabled: enabledTools.includes("run_command"),
     writeFileEnabled: enabledTools.includes("write_file"),
-    httpDevNoAuth: false,
+    remoteDevNoAuth: false,
   };
 }
 
-export function loadHttpMcpConfig(env: Record<string, string | undefined> = process.env): BridgeConfig {
-  const port = Number(env.DIAGBRIDGE_HTTP_PORT ?? env.DIAGBRIDGE_PORT ?? DEFAULT_HTTP_MCP_PORT);
+export function loadRemoteMcpConfig(env: Record<string, string | undefined> = process.env): BridgeConfig {
+  if (env.DIAGBRIDGE_HTTP_HOST !== undefined && env.DIAGBRIDGE_REMOTE_HOST === undefined) {
+    console.warn("DEPRECATION NOTICE: DIAGBRIDGE_HTTP_HOST is deprecated. Use DIAGBRIDGE_REMOTE_HOST instead.");
+  }
+  if (env.DIAGBRIDGE_HTTP_PORT !== undefined && env.DIAGBRIDGE_REMOTE_PORT === undefined) {
+    console.warn("DEPRECATION NOTICE: DIAGBRIDGE_HTTP_PORT is deprecated. Use DIAGBRIDGE_REMOTE_PORT instead.");
+  }
+
+  const host = env.DIAGBRIDGE_REMOTE_HOST ?? env.DIAGBRIDGE_HTTP_HOST ?? env.DIAGBRIDGE_HOST ?? DEFAULT_HOST;
+  const rawPort = env.DIAGBRIDGE_REMOTE_PORT ?? env.DIAGBRIDGE_HTTP_PORT ?? env.DIAGBRIDGE_PORT;
+  const port = Number(rawPort ?? DEFAULT_REMOTE_MCP_PORT);
+
   return {
-    host: env.DIAGBRIDGE_HTTP_HOST ?? env.DIAGBRIDGE_HOST ?? DEFAULT_HOST,
-    port: Number.isFinite(port) ? port : DEFAULT_HTTP_MCP_PORT,
+    host,
+    port: Number.isFinite(port) ? port : DEFAULT_REMOTE_MCP_PORT,
     sessionToken: env.DIAGBRIDGE_SESSION_TOKEN,
-    enabledTools: [...HTTP_CONNECTOR_TOOL_NAMES],
+    enabledTools: [...REMOTE_MCP_TOOL_NAMES],
     auditLogPath: env.DIAGBRIDGE_AUDIT_LOG ?? ".diagbridge-audit.jsonl",
     cwd: env.DIAGBRIDGE_CWD ?? process.cwd(),
     visible: true,
     runCommandEnabled: false,
     writeFileEnabled: false,
-    httpDevNoAuth: isHttpDevNoAuthEnabled(env),
+    remoteDevNoAuth: isRemoteDevNoAuthEnabled(env),
   };
 }
+

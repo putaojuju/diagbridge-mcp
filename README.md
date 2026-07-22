@@ -1,89 +1,45 @@
 # DiagBridge MCP
 
-DiagBridge MCP is a visible Windows MCP bridge for trusted, user-authorized computer sessions.
+DiagBridge MCP is a general Windows MCP bridge for trusted local and remote AI agents.
 
-It connects a user's local computer session to trusted MCP-capable AI agents such as ChatGPT, Codex, Claude Code, Cursor, or similar tools. It is intentionally small: it is a bridge, not a sandbox, not an RMM platform, and not a general security judge for every command.
+It exposes one shared tool registry through:
+- `stdio` for local MCP clients (Codex, Claude Code, Cursor, etc.)
+- `Streamable HTTP` for remote MCP clients (ChatGPT, Codex Plugin, remote agents, etc.)
 
-## What DiagBridge does
-
-DiagBridge keeps only the bridge responsibilities:
-
-- Run visibly.
-- Listen on `127.0.0.1` by default.
-- Use a temporary session token.
-- Provide a disconnect endpoint.
-- Record audit events.
-- Publish honest MCP-style tool metadata.
-- Avoid hidden run modes, UAC bypass, and default administrator assumptions.
-
-## What DiagBridge does not do
-
-DiagBridge is not:
-
-- A security platform.
-- A sandbox.
-- A malware analysis environment.
-- A hidden remote-control tool.
-- A replacement for MCP host approval.
-- A system that can reliably decide whether every possible command is safe.
-
-The MCP host is expected to handle approval prompts, automation level, allow/deny lists, and user-facing tool policy.
+中文：
+> DiagBridge MCP 是面向可信本地和远程 AI Agent 的通用 Windows MCP 桥。
+> 它通过 stdio 和 Streamable HTTP 暴露同一套工具。
 
 ## Transports
 
-DiagBridge currently provides three development entry points:
-
 | Entry point | Script | Purpose |
 | --- | --- | --- |
-| Local HTTP bridge | `npm run dev` | Simple local `/tools` and `/call` bridge for development. |
-| Stdio MCP server | `npm run dev:mcp` | Local MCP host integration over stdio. |
-| Dev HTTP MCP fallback | `npm run dev:http-mcp` | ChatGPT custom connector testing through `/mcp`. |
+| Stdio MCP server | `npm run dev:mcp` | Local MCP host integration over stdio (`src/mcp/transports/stdio.ts`). |
+| Streamable HTTP MCP transport | `npm run dev:remote-mcp` | Remote MCP client integration over Streamable HTTP (`src/mcp/transports/streamable-http.ts`). |
 
-The dev HTTP MCP fallback is for local connector testing. It returns text on `GET /`, handles `OPTIONS /mcp` and `OPTIONS /mcp/*`, and sends MCP JSON-RPC traffic through `POST /mcp`.
+## Tools Overview
 
-## Tools
+All tools are defined in a single, shared tool registry (`src/mcp/tool-registry.ts`).
 
-The local development bridge can expose:
+### Local Stdio Defaults (6 read-only tools)
+- `system_info`
+- `list_dir`
+- `read_file`
+- `drive_inventory`
+- `junk_candidates`
+- `windows_event_summary`
 
-| Tool | Metadata | Default local enabled |
-| --- | --- | --- |
-| `system_info` | read-only | Yes |
-| `list_dir` | read-only | Yes |
-| `read_file` | read-only | Yes |
-| `drive_inventory` | read-only | Yes |
-| `junk_candidates` | read-only | Yes |
-| `windows_event_summary` | read-only | Yes |
-| `write_file` | destructive | No |
-| `run_command` | destructive + open-world | No |
+`write_file` and `run_command` are destructive and disabled by default. They can be enabled for stdio using `DIAGBRIDGE_MCP_TOOLS`.
 
-The ChatGPT connector HTTP fallback intentionally exposes only:
+### Remote Streamable HTTP Defaults (4 read-only tools)
+- `system_info`
+- `drive_inventory`
+- `junk_candidates`
+- `windows_event_summary`
 
-```text
-system_info
-drive_inventory
-junk_candidates
-windows_event_summary
-```
+`read_file`, `write_file`, and `run_command` are **never registered** on the remote transport for security and privacy protection.
 
-It does not expose `read_file`, `write_file`, or `run_command` by default.
-
-`run_command` is a high-power capability. If enabled in a local-only development session, an agent may run local commands through the bridge. The consequences depend on the user's operating system account, the MCP host approval policy, and the command itself.
-
-Recommended default: use only read-only tools first. Enable `write_file` or `run_command` only for trusted local sessions where the host approval settings are understood.
-
-## Windows read-only diagnostics
-
-### `drive_inventory`
-
-Scans directory metadata only: path, name, type, size, modified time, and extension. It does not read file contents. It has bounded `maxDepth`, `maxEntries`, and `maxSeconds` controls and excludes common high-privacy or high-risk directories by default.
-
-### `junk_candidates`
-
-Identifies possible junk candidates from metadata only. It does not delete, move, clean, or repair anything. Every candidate returns `recommendedAction: "review_only"`.
-
-### `windows_event_summary`
-
-Reads recent Windows Application/System error event summaries through a fixed read-only query. It focuses on application crashes, unexpected shutdowns, WHEA/hardware events, display/GPU resets, and disk/storage providers. It does not accept arbitrary command input and does not auto-elevate.
+For full tool details, see [`docs/TOOLS.md`](./docs/TOOLS.md).
 
 ## Configuration
 
@@ -91,43 +47,34 @@ Environment variables:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `DIAGBRIDGE_HOST` | `127.0.0.1` | Bind address for the local HTTP bridge. Keep local unless you know what you are doing. |
-| `DIAGBRIDGE_HTTP_HOST` | `127.0.0.1` | Bind address for the dev HTTP MCP fallback. |
-| `DIAGBRIDGE_PORT` | `8787` | Local bridge port. |
-| `DIAGBRIDGE_HTTP_PORT` | `8787` | Dev HTTP MCP fallback port. |
-| `DIAGBRIDGE_SESSION_TOKEN` | generated at startup | Session token. Protected requests without it are rejected. |
-| `DIAGBRIDGE_TOOLS` | read-only local tools | Comma-separated enabled local tools. |
-| `DIAGBRIDGE_CWD` | current directory | Base directory for relative file paths. |
-| `DIAGBRIDGE_AUDIT_LOG` | `.diagbridge-audit.jsonl` | JSONL audit log path. |
+| `DIAGBRIDGE_HOST` | `127.0.0.1` | Default host address. |
+| `DIAGBRIDGE_REMOTE_HOST` | `127.0.0.1` | Bind address for Streamable HTTP server. |
+| `DIAGBRIDGE_PORT` | `8787` | Default port number. |
+| `DIAGBRIDGE_REMOTE_PORT` | `8787` | Streamable HTTP server port. |
+| `DIAGBRIDGE_SESSION_TOKEN` | generated at startup | Session token for authenticating HTTP requests. |
+| `DIAGBRIDGE_MCP_TOOLS` | read-only local tools | Comma-separated enabled tools for local stdio transport. |
+| `DIAGBRIDGE_REMOTE_DEV_NO_AUTH` | `0` | Enable `1` for temporary localhost Inspector testing without token authentication. |
+| `DIAGBRIDGE_CWD` | current directory | Base working directory. |
+| `DIAGBRIDGE_AUDIT_LOG` | `.diagbridge-audit.jsonl` | JSONL audit log file path. |
 
-## Development
+## Quick Start
 
 ```bash
 npm install
 npm run check
 npm test
-npm run dev
+
+# Launch local stdio server
 npm run dev:mcp
-npm run dev:http-mcp
+
+# Launch remote Streamable HTTP server
+npm run dev:remote-mcp
 ```
 
-## ChatGPT connector development
+## Documentation
 
-See [`docs/DEV_HTTP_CONNECTOR_SETUP.md`](./docs/DEV_HTTP_CONNECTOR_SETUP.md).
-
-For first-round connector testing, use the dev HTTP MCP endpoint and only test:
-
-```text
-system_info
-drive_inventory
-junk_candidates
-windows_event_summary
-```
-
-Do not enable `write_file` or `run_command` over a public tunnel.
-
-## Security expectations
-
-Use DiagBridge only with trusted parties and a trusted MCP host. The host should provide tool approval and policy controls. DiagBridge still refuses to add hidden operation, UAC bypass, silent persistence, credential-harvesting-specific tools, or approval-bypass behavior.
-
-See [`SECURITY.md`](./SECURITY.md) and [`docs/threat-model.md`](./docs/threat-model.md).
+- [Local MCP Setup (stdio)](./docs/LOCAL_MCP_SETUP.md)
+- [Remote MCP Setup (Streamable HTTP)](./docs/REMOTE_MCP_SETUP.md)
+- [Tools Reference](./docs/TOOLS.md)
+- [Usage Guide](./docs/usage.md)
+- [Threat Model](./docs/threat-model.md)

@@ -44,7 +44,7 @@ export function isRequestAuthorized(headers: HeaderMap, session: SessionState): 
   return tokenHeader === session.token;
 }
 
-export function isHttpConnectorRequestAuthorized(
+export function isRemoteMcpRequestAuthorized(
   headers: HeaderMap,
   session: SessionState,
   devNoAuth = false,
@@ -52,7 +52,11 @@ export function isHttpConnectorRequestAuthorized(
   return devNoAuth ? session.connected : isRequestAuthorized(headers, session);
 }
 
+/** @deprecated Use isRemoteMcpRequestAuthorized */
+export const isHttpConnectorRequestAuthorized = isRemoteMcpRequestAuthorized;
+
 export function disconnectSession(session: SessionState, reason = "user-requested-disconnect"): SessionState {
+
   session.connected = false;
   session.disconnectedAt = new Date().toISOString();
   session.disconnectReason = reason;

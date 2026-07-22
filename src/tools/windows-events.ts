@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import type { ToolMetadata } from "../config.ts";
+import * as z from "zod/v4";
+import type { BridgeConfig, ToolDefinition, ToolMetadata } from "../config.ts";
 
 export interface WindowsEventSummaryEntry {
   timeCreated: string;
@@ -21,26 +22,6 @@ export interface WindowsEventSummaryResult {
   };
   warning?: string;
 }
-
-export const windowsEventSummaryTool: ToolMetadata = {
-  name: "windows_event_summary",
-  title: "Windows event summary",
-  description: "Read recent Windows Application/System error events using a fixed read-only query. It does not accept arbitrary commands and does not auto-elevate.",
-  inputSchema: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      sinceDays: { type: "number", default: 14 },
-      logs: { type: "array", items: { type: "string" }, default: ["Application", "System"] },
-      maxEvents: { type: "number", default: 200 },
-    },
-  },
-  annotations: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    openWorldHint: false,
-  },
-};
 
 const ALLOWED_LOGS = new Set(["Application", "System"]);
 const WATCH_PROVIDERS = [
@@ -236,3 +217,37 @@ export async function windowsEventSummary(args: Record<string, unknown>): Promis
     return emptySummary(sinceDays, error instanceof Error ? error.message : "Windows event query failed");
   }
 }
+
+export const windowsEventSummaryDefinition: ToolDefinition = {
+  name: "windows_event_summary",
+  title: "Windows event summary",
+  description: "Read recent Windows Application/System error events using a fixed read-only query. It does not accept arbitrary commands and does not auto-elevate.",
+  zodSchema: {
+    sinceDays: z.number().int().min(1).max(90).optional(),
+    logs: z.array(z.enum(["Application", "System"])).optional(),
+    maxEvents: z.number().int().min(1).max(500).optional(),
+  },
+  jsonSchema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      sinceDays: { type: "number", default: 14 },
+      logs: { type: "array", items: { type: "string" }, default: ["Application", "System"] },
+      maxEvents: { type: "number", default: 200 },
+    },
+  },
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+  },
+  handler: async (args) => windowsEventSummary(args),
+};
+
+export const windowsEventSummaryTool: ToolMetadata = {
+  name: windowsEventSummaryDefinition.name,
+  title: windowsEventSummaryDefinition.title,
+  description: windowsEventSummaryDefinition.description,
+  inputSchema: windowsEventSummaryDefinition.jsonSchema,
+  annotations: windowsEventSummaryDefinition.annotations,
+};

@@ -1,27 +1,6 @@
 import { spawn } from "node:child_process";
-import type { ToolMetadata } from "../config.ts";
-
-export const runCommandTool: ToolMetadata = {
-  name: "run_command",
-  title: "Run command",
-  description: "Run a local command. This is destructive and open-world. Enable only for trusted sessions and rely on the MCP host approval policy.",
-  inputSchema: {
-    type: "object",
-    additionalProperties: false,
-    required: ["command"],
-    properties: {
-      command: { type: "string" },
-      args: { type: "array", items: { type: "string" }, default: [] },
-      cwd: { type: "string" },
-      timeoutMs: { type: "number", default: 30000 },
-    },
-  },
-  annotations: {
-    readOnlyHint: false,
-    destructiveHint: true,
-    openWorldHint: true,
-  },
-};
+import * as z from "zod/v4";
+import type { BridgeConfig, ToolDefinition, ToolMetadata } from "../config.ts";
 
 export interface CommandResult {
   command: string;
@@ -78,3 +57,45 @@ export async function runCommand(input: Record<string, unknown>): Promise<Comman
     });
   });
 }
+
+export const runCommandDefinition: ToolDefinition = {
+  name: "run_command",
+  title: "Run command",
+  description: "Run a local command. This is destructive and open-world. Enable only for trusted sessions and rely on the MCP host approval policy.",
+  zodSchema: {
+    command: z.string(),
+    args: z.array(z.string()).optional(),
+    cwd: z.string().optional(),
+    timeoutMs: z.number().int().min(100).max(300_000).optional(),
+  },
+  jsonSchema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["command"],
+    properties: {
+      command: { type: "string" },
+      args: { type: "array", items: { type: "string" }, default: [] },
+      cwd: { type: "string" },
+      timeoutMs: { type: "number", default: 30000 },
+    },
+  },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    openWorldHint: true,
+  },
+  handler: async (args, config) => {
+    if (!config.runCommandEnabled) {
+      throw new Error("run_command is disabled by current DiagBridge config");
+    }
+    return runCommand(args);
+  },
+};
+
+export const runCommandTool: ToolMetadata = {
+  name: runCommandDefinition.name,
+  title: runCommandDefinition.title,
+  description: runCommandDefinition.description,
+  inputSchema: runCommandDefinition.jsonSchema,
+  annotations: runCommandDefinition.annotations,
+};
