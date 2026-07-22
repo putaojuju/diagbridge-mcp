@@ -14,7 +14,9 @@
     "dev:mcp": "node --experimental-strip-types src/mcp/transports/stdio.ts",
     "dev:remote-mcp": "node --experimental-strip-types src/mcp/transports/streamable-http.ts",
     "dev:http-mcp": "node --experimental-strip-types src/mcp/transports/streamable-http.ts",
-    "dev:friend-ui": "node --experimental-strip-types src/ui/launch-friend-ui.ts"
+    "dev:friend-ui": "node --experimental-strip-types src/ui/launch-friend-ui.ts",
+    "build": "node build.js",
+    "build:portable": "node build.js && node build-portable.js"
   },
 
   "dependencies": {
@@ -23,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "^0.28.1",
     "typescript": "^5.8.3"
   }
 }

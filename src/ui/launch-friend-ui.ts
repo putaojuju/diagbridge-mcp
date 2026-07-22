@@ -4,7 +4,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { AuditLog } from "../audit.ts";
 import { REMOTE_MCP_TOOL_NAMES, loadRemoteMcpConfig } from "../config.ts";
 import { createDiagBridgeMcpServer } from "../mcp/server-factory.ts";
-import { createStoppedSession, isRemoteMcpRequestAuthorized } from "../session.ts";
+import { createStoppedSession, isRemoteMcpRequestAuthorized, stopSession } from "../session.ts";
+import { CloudflareTunnel } from "../tunnel/cloudflared.ts";
 import { createUiServer, listenUiServer } from "./server.ts";
 
 function corsHeaders() {
@@ -55,6 +56,29 @@ export async function startFriendUiService(): Promise<void> {
   const config = loadRemoteMcpConfig();
   const session = createStoppedSession();
   const audit = new AuditLog(config.auditLogPath);
+  const tunnel = new CloudflareTunnel();
+
+  let shuttingDown = false;
+  const shutdownAll = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    stopSession(session, "process-exit");
+    tunnel.stop().catch(() => {});
+  };
+
+  process.on("SIGINT", () => {
+    shutdownAll();
+    process.exit(0);
+  });
+
+  process.on("SIGTERM", () => {
+    shutdownAll();
+    process.exit(0);
+  });
+
+  process.on("exit", () => {
+    shutdownAll();
+  });
 
   // 1. Create Remote Streamable HTTP MCP Server
   const remoteMcpServer = createServer(async (req, res) => {
@@ -72,7 +96,7 @@ export async function startFriendUiService(): Promise<void> {
 
       if (req.method === "POST" && req.url === "/mcp") {
         if (!isRemoteMcpRequestAuthorized(req.headers, session, config.remoteDevNoAuth)) {
-          sendJson(res, 401, { error: "missing, invalid, or stopped session token" });
+          sendJson(res, 401, { error: "missing, invalid, stopped, or expired session token" });
           return;
         }
 
@@ -122,7 +146,7 @@ export async function startFriendUiService(): Promise<void> {
   });
 
   // 2. Create Local UI Server
-  const uiServer = createUiServer(session, audit);
+  const uiServer = createUiServer(session, audit, 8790, "127.0.0.1", config.port, tunnel);
 
   await new Promise<void>((resolvePromise) => {
     remoteMcpServer.listen(config.port, config.host, () => resolvePromise());
@@ -131,19 +155,18 @@ export async function startFriendUiService(): Promise<void> {
   await listenUiServer(uiServer, 8790);
 
   const uiUrl = "http://127.0.0.1:8790";
-  const remoteMcpUrl = `http://${config.host}:${config.port}/mcp`;
 
   console.log("--------------------------------------------------");
   console.log("🛡️ DiagBridge 控制面板已启动！");
   console.log(`👉 本地控制页面: ${uiUrl}`);
-  console.log(`🌐 远程 MCP 端点: ${remoteMcpUrl}`);
+  console.log(`🌐 远程 MCP 本地代理端点: http://${config.host}:${config.port}/mcp`);
   console.log("--------------------------------------------------");
-  console.log("提示：请在本地浏览器中点击“开始诊断”以启动会话。");
+  console.log("提示：请在本地浏览器中点击“开始诊断”以建立安全公网 HTTPS 连接。");
 
   openBrowser(uiUrl);
 }
 
-if (process.argv[1]?.endsWith("launch-friend-ui.ts") || process.argv[1]?.endsWith("launch-friend-ui.js")) {
+if (process.argv[1]?.endsWith("launch-friend-ui.ts") || process.argv[1]?.endsWith("launch-friend-ui.js") || process.argv[1]?.endsWith("diagbridge.mjs")) {
   startFriendUiService().catch((err) => {
     console.error("Failed to start Friend UI service:", err);
     process.exit(1);

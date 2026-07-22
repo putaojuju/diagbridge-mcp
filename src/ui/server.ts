@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { AuditLog } from "../audit.ts";
 import { DEFAULT_REMOTE_MCP_PORT, REMOTE_MCP_TOOL_NAMES } from "../config.ts";
 import { type SessionState, checkAndExpireSession, startSession, stopSession } from "../session.ts";
+import { CloudflareTunnel } from "../tunnel/cloudflared.ts";
 
 const UI_HOST = "127.0.0.1";
 const DEFAULT_UI_PORT = 8790;
@@ -68,8 +69,12 @@ function sendFile(res: ServerResponse, filename: string, contentType: string): v
   }
 }
 
-export function formatStatusResponse(session: SessionState): Record<string, unknown> {
-  checkAndExpireSession(session);
+export function formatStatusResponse(session: SessionState, tunnel?: CloudflareTunnel): Record<string, unknown> {
+  const expired = checkAndExpireSession(session);
+  if (expired && tunnel) {
+    tunnel.stop().catch(() => {});
+  }
+
   return {
     state: session.state,
     startedAt: session.startedAt ?? null,
@@ -78,6 +83,7 @@ export function formatStatusResponse(session: SessionState): Record<string, unkn
     tokenLast4: session.token ? session.token.slice(-4) : null,
     disconnectReason: session.disconnectReason ?? null,
     allowedTools: [...REMOTE_MCP_TOOL_NAMES],
+    tunnelStatus: tunnel ? tunnel.getStatus() : "stopped",
   };
 }
 
@@ -87,6 +93,7 @@ export function createUiServer(
   port = DEFAULT_UI_PORT,
   requestedHost?: string,
   remoteMcpPort = DEFAULT_REMOTE_MCP_PORT,
+  tunnel: CloudflareTunnel = new CloudflareTunnel(),
 ): Server {
   if (requestedHost && requestedHost !== UI_HOST) {
     throw new Error(`UI server is restricted to 127.0.0.1 and cannot bind to ${requestedHost}`);
@@ -112,7 +119,7 @@ export function createUiServer(
     }
 
     if (method === "GET" && url === "/api/status") {
-      sendJson(res, 200, formatStatusResponse(session));
+      sendJson(res, 200, formatStatusResponse(session, tunnel));
       return;
     }
 
@@ -123,12 +130,34 @@ export function createUiServer(
       }
 
       startSession(session);
+
+      // Start Cloudflare Quick Tunnel if not in test bypass mode
+      let publicEndpoint = `http://127.0.0.1:${remoteMcpPort}/mcp`;
+      if (process.env.DIAGBRIDGE_MOCK_TUNNEL === "1") {
+        publicEndpoint = `https://mock-tunnel.trycloudflare.com/mcp`;
+      } else {
+        const tunnelRes = await tunnel.start(`http://127.0.0.1:${remoteMcpPort}`);
+        if (tunnelRes.error) {
+          stopSession(session, "tunnel-start-failed");
+          await tunnel.stop();
+          sendJson(res, 500, { error: tunnelRes.error });
+          return;
+        }
+        if (tunnelRes.mcpEndpoint) {
+          publicEndpoint = tunnelRes.mcpEndpoint;
+        }
+      }
+
+      const lanEndpoints = getCandidateEndpoints(remoteMcpPort);
+      const allCandidateEndpoints = [...new Set([publicEndpoint, ...lanEndpoints])];
+
       sendJson(res, 200, {
-        status: formatStatusResponse(session),
+        status: formatStatusResponse(session, tunnel),
         connection: {
           token: session.token,
           expiresAt: session.expiresAt,
-          candidateEndpoints: getCandidateEndpoints(remoteMcpPort),
+          mcpEndpoint: publicEndpoint,
+          candidateEndpoints: allCandidateEndpoints,
         },
       });
       return;
@@ -141,8 +170,9 @@ export function createUiServer(
       }
 
       stopSession(session);
+      await tunnel.stop();
       sendJson(res, 200, {
-        status: formatStatusResponse(session),
+        status: formatStatusResponse(session, tunnel),
       });
       return;
     }

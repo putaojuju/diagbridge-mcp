@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+
 import { mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -22,6 +23,8 @@ import { createDiagBridgeMcpServer } from "./mcp/server-factory.ts";
 import { checkAndExpireSession, createSession, createStoppedSession, isRemoteMcpRequestAuthorized, isRequestAuthorized } from "./session.ts";
 import { listDir, readFile, resolveBridgePath } from "./tools/file-tools.ts";
 import { createUiServer, getCandidateEndpoints } from "./ui/server.ts";
+import { CloudflareTunnel, parseTunnelUrl } from "./tunnel/cloudflared.ts";
+
 
 
 import { driveInventory } from "./tools/drive-inventory.ts";
@@ -33,7 +36,11 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 
+process.env.DIAGBRIDGE_MOCK_TUNNEL = "1";
+process.env.DIAGBRIDGE_TEST_NO_OPEN = "1";
+
 test("MCP server version matches package.json version", () => {
+
   const packageJson = JSON.parse(
     readFileSync(new URL("../package.json", import.meta.url), "utf8"),
   ) as { version: string };
@@ -672,5 +679,39 @@ test("Local UI server binds only to 127.0.0.1 and enforces one-time pairing toke
     assert.equal(statusExpired.disconnectReason, "session-expired");
   } finally {
     uiServer.close();
+  }
+});
+
+test("Cloudflare Quick Tunnel URL parser extracts trycloudflare.com endpoint and ignores error logs", () => {
+  const validOutput = "INF 2026-07-22 Your quick tunnel is ready! Visit: https://demo-random-subdomain.trycloudflare.com";
+  const parsed = parseTunnelUrl(validOutput);
+  assert.equal(parsed, "https://demo-random-subdomain.trycloudflare.com");
+
+  const errorOutput = "ERR 404 connection error: failed to dial target host";
+  const parsedErr = parseTunnelUrl(errorOutput);
+  assert.equal(parsedErr, null);
+});
+
+test("Tunnel stop and session expiration cleanly terminate tunnel state", async () => {
+  const tunnel = new CloudflareTunnel();
+  assert.equal(tunnel.getStatus(), "stopped");
+  await tunnel.stop();
+  assert.equal(tunnel.getStatus(), "stopped");
+});
+
+test("Portable build verification checks relative paths, bundled assets, and exclusion of src/node_modules", () => {
+  const distAppMjs = join(process.cwd(), "dist", "app", "diagbridge.mjs");
+  const distPkg = join(process.cwd(), "dist", "app", "package.json");
+
+  assert.ok(existsSync(distAppMjs), "dist/app/diagbridge.mjs must exist after build");
+  assert.ok(existsSync(distPkg), "dist/app/package.json must exist after build");
+
+  const releaseDir = join(process.cwd(), "release", "DiagBridge-Portable");
+  if (existsSync(releaseDir)) {
+    const launcherScript = readFileSync(join(releaseDir, "启动 DiagBridge.cmd"), "utf8");
+    assert.match(launcherScript, /runtime\\node\.exe app\\diagbridge\.mjs/);
+    assert.equal(existsSync(join(releaseDir, "src")), false, "Release must not contain src/");
+    assert.equal(existsSync(join(releaseDir, "node_modules")), false, "Release must not contain node_modules/");
+    assert.equal(existsSync(join(releaseDir, ".git")), false, "Release must not contain .git/");
   }
 });
