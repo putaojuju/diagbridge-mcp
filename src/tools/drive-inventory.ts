@@ -1,7 +1,7 @@
 import { extname, isAbsolute, normalize, resolve, sep } from "node:path";
 import { readdir, stat } from "node:fs/promises";
 import * as z from "zod/v4";
-import type { BridgeConfig, ToolDefinition, ToolMetadata } from "../config.ts";
+import type { ToolDefinition } from "../mcp/types.ts";
 
 export interface DriveInventoryEntry {
   path: string;
@@ -176,31 +176,10 @@ export const driveInventoryDefinition: ToolDefinition = {
     includeHidden: z.boolean().optional(),
     excludePaths: z.array(z.string()).optional(),
   },
-  jsonSchema: {
-    type: "object",
-    additionalProperties: false,
-    required: ["root"],
-    properties: {
-      root: { type: "string" },
-      maxDepth: { type: "number", default: 2 },
-      maxEntries: { type: "number", default: 5000 },
-      maxSeconds: { type: "number", default: 30 },
-      includeHidden: { type: "boolean", default: false },
-      excludePaths: { type: "array", items: { type: "string" }, default: [] },
-    },
-  },
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
     openWorldHint: false,
   },
   handler: async (args, config) => driveInventory(args, config.cwd),
-};
-
-export const driveInventoryTool: ToolMetadata = {
-  name: driveInventoryDefinition.name,
-  title: driveInventoryDefinition.title,
-  description: driveInventoryDefinition.description,
-  inputSchema: driveInventoryDefinition.jsonSchema,
-  annotations: driveInventoryDefinition.annotations,
 };

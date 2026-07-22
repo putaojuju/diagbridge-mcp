@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import * as z from "zod/v4";
-import type { BridgeConfig, ToolDefinition, ToolMetadata } from "../config.ts";
+import type { ToolDefinition } from "../mcp/types.ts";
 
 export interface CommandResult {
   command: string;
@@ -68,17 +68,6 @@ export const runCommandDefinition: ToolDefinition = {
     cwd: z.string().optional(),
     timeoutMs: z.number().int().min(100).max(300_000).optional(),
   },
-  jsonSchema: {
-    type: "object",
-    additionalProperties: false,
-    required: ["command"],
-    properties: {
-      command: { type: "string" },
-      args: { type: "array", items: { type: "string" }, default: [] },
-      cwd: { type: "string" },
-      timeoutMs: { type: "number", default: 30000 },
-    },
-  },
   annotations: {
     readOnlyHint: false,
     destructiveHint: true,
@@ -90,12 +79,4 @@ export const runCommandDefinition: ToolDefinition = {
     }
     return runCommand(args);
   },
-};
-
-export const runCommandTool: ToolMetadata = {
-  name: runCommandDefinition.name,
-  title: runCommandDefinition.title,
-  description: runCommandDefinition.description,
-  inputSchema: runCommandDefinition.jsonSchema,
-  annotations: runCommandDefinition.annotations,
 };

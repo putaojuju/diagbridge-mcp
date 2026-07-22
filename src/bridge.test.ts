@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { AuditLog } from "./audit.ts";
 import {
   DEFAULT_HOST,
+  LOCAL_MCP_TOOL_NAMES,
   REMOTE_MCP_TOOL_NAMES,
   TOOL_NAMES,
   isRemoteDevNoAuthEnabled,
@@ -20,8 +21,10 @@ import { createSession, isRemoteMcpRequestAuthorized, isRequestAuthorized } from
 import { listDir, readFile, resolveBridgePath } from "./tools/file-tools.ts";
 import { driveInventory } from "./tools/drive-inventory.ts";
 import { DANGEROUS_CLEANUP_ROOTS, junkCandidates } from "./tools/junk-candidates.ts";
-import { summarizeWindowsEvents, windowsEventSummaryTool, windowsEventSummary } from "./tools/windows-events.ts";
+import { summarizeWindowsEvents, windowsEventSummary } from "./tools/windows-events.ts";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 test("Tool registry keys match TOOL_NAMES exactly and each item has schema, annotations, and handler", () => {
   const registryKeys = Object.keys(TOOL_REGISTRY).sort();
@@ -35,7 +38,6 @@ test("Tool registry keys match TOOL_NAMES exactly and each item has schema, anno
     assert.ok(def.title && typeof def.title === "string");
     assert.ok(def.description && typeof def.description === "string");
     assert.ok(def.zodSchema && typeof def.zodSchema === "object");
-    assert.ok(def.jsonSchema && typeof def.jsonSchema === "object");
     assert.ok(def.annotations && typeof def.annotations === "object");
     assert.equal(typeof def.annotations.readOnlyHint, "boolean");
     assert.equal(typeof def.annotations.destructiveHint, "boolean");
@@ -224,7 +226,8 @@ test("junk_candidates does not delete and returns review_only candidates", async
 });
 
 test("windows_event_summary does not accept arbitrary command input", async () => {
-  assert.equal(Object.hasOwn(windowsEventSummaryTool.inputSchema.properties as Record<string, unknown>, "command"), false);
+  const metadata = Object.fromEntries(getToolMetadata().map((tool) => [tool.name, tool]));
+  assert.equal(Object.hasOwn(metadata.windows_event_summary.inputSchema.properties as Record<string, unknown>, "command"), false);
   await assert.rejects(() => windowsEventSummary({ command: "Get-Process" }), /does not accept arbitrary command/i);
 });
 
@@ -269,8 +272,10 @@ test("consecutive independent HTTP MCP requests in stateless mode work correctly
       const cleanup = () => {
         if (!cleanedUp) {
           cleanedUp = true;
-          void transport.close();
-          void mcpServer.close();
+          Promise.allSettled([
+            transport.close(),
+            mcpServer.close(),
+          ]).catch(() => {});
         }
       };
 
@@ -315,5 +320,63 @@ test("consecutive independent HTTP MCP requests in stateless mode work correctly
     assert.match(body2Str, /windows_event_summary/);
   } finally {
     server.close();
+  }
+});
+
+test("real stdio MCP client integration verifies initialize, tools/list, system_info, tool filtering, and clean stdout", async () => {
+  const envClean = { ...process.env };
+  delete envClean.DIAGBRIDGE_MCP_TOOLS;
+  delete envClean.DIAGBRIDGE_TOOLS;
+
+  const transport = new StdioClientTransport({
+    command: "node",
+    args: ["--experimental-strip-types", join(process.cwd(), "src/mcp/transports/stdio.ts")],
+    env: envClean as Record<string, string>,
+  });
+
+
+  const client = new Client({ name: "test-client", version: "1.0.0" }, { capabilities: {} });
+  await client.connect(transport);
+
+  try {
+    const listResult = await client.listTools();
+    const toolNames = listResult.tools.map((tool) => tool.name);
+
+    assert.equal(toolNames.length, 6);
+    assert.deepEqual(toolNames.sort(), [...LOCAL_MCP_TOOL_NAMES].sort());
+    assert.equal(toolNames.includes("write_file"), false);
+    assert.equal(toolNames.includes("run_command"), false);
+
+    const callResult = await client.callTool({ name: "system_info", arguments: {} });
+    assert.equal(callResult.isError, undefined);
+    assert.ok(Array.isArray(callResult.content));
+    assert.match((callResult.content[0] as { text: string }).text, /visibleBridge/);
+  } finally {
+    await client.close();
+  }
+});
+
+test("real stdio MCP client allows write_file and run_command when DIAGBRIDGE_MCP_TOOLS is explicitly set", async () => {
+  const transport = new StdioClientTransport({
+    command: "node",
+    args: ["--experimental-strip-types", join(process.cwd(), "src/mcp/transports/stdio.ts")],
+    env: {
+      ...process.env,
+      DIAGBRIDGE_MCP_TOOLS: "system_info,list_dir,read_file,drive_inventory,junk_candidates,windows_event_summary,write_file,run_command",
+    },
+  });
+
+  const client = new Client({ name: "test-client", version: "1.0.0" }, { capabilities: {} });
+  await client.connect(transport);
+
+  try {
+    const listResult = await client.listTools();
+    const toolNames = listResult.tools.map((tool) => tool.name);
+
+    assert.equal(toolNames.length, 8);
+    assert.ok(toolNames.includes("write_file"));
+    assert.ok(toolNames.includes("run_command"));
+  } finally {
+    await client.close();
   }
 });

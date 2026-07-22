@@ -1,5 +1,3 @@
-import type { z } from "zod/v4";
-
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 8787;
 export const DEFAULT_REMOTE_MCP_PORT = 8787;
@@ -54,30 +52,6 @@ export interface BridgeConfig {
   runCommandEnabled: boolean;
   writeFileEnabled: boolean;
   remoteDevNoAuth: boolean;
-}
-
-export interface ToolAnnotations {
-  readOnlyHint: boolean;
-  destructiveHint: boolean;
-  openWorldHint: boolean;
-}
-
-export interface ToolMetadata {
-  name: ToolName;
-  title: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-  annotations: ToolAnnotations;
-}
-
-export interface ToolDefinition {
-  name: ToolName;
-  title: string;
-  description: string;
-  zodSchema: Record<string, z.ZodType>;
-  jsonSchema: Record<string, unknown>;
-  annotations: ToolAnnotations;
-  handler: (args: Record<string, unknown>, config: BridgeConfig) => Promise<unknown>;
 }
 
 export function isToolName(value: string): value is ToolName {
@@ -154,4 +128,3 @@ export function loadRemoteMcpConfig(env: Record<string, string | undefined> = pr
     remoteDevNoAuth: isRemoteDevNoAuthEnabled(env),
   };
 }
-

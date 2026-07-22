@@ -1,7 +1,7 @@
 import { dirname, isAbsolute, normalize, resolve } from "node:path";
 import { mkdir, readFile as fsReadFile, readdir, stat, writeFile as fsWriteFile } from "node:fs/promises";
 import * as z from "zod/v4";
-import type { BridgeConfig, ToolDefinition, ToolMetadata } from "../config.ts";
+import type { ToolDefinition } from "../mcp/types.ts";
 
 export function resolveBridgePath(inputPath: string, cwd = process.cwd()): string {
   if (!inputPath || inputPath.trim().length === 0) {
@@ -75,14 +75,6 @@ export const listDirDefinition: ToolDefinition = {
   zodSchema: {
     path: z.string(),
   },
-  jsonSchema: {
-    type: "object",
-    additionalProperties: false,
-    required: ["path"],
-    properties: {
-      path: { type: "string" },
-    },
-  },
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -99,16 +91,6 @@ export const readFileDefinition: ToolDefinition = {
     path: z.string(),
     encoding: z.string().optional(),
     maxBytes: z.number().int().positive().max(16 * 1024 * 1024).optional(),
-  },
-  jsonSchema: {
-    type: "object",
-    additionalProperties: false,
-    required: ["path"],
-    properties: {
-      path: { type: "string" },
-      encoding: { type: "string", default: "utf8" },
-      maxBytes: { type: "number", default: 1048576 },
-    },
   },
   annotations: {
     readOnlyHint: true,
@@ -128,17 +110,6 @@ export const writeFileDefinition: ToolDefinition = {
     encoding: z.string().optional(),
     createParents: z.boolean().optional(),
   },
-  jsonSchema: {
-    type: "object",
-    additionalProperties: false,
-    required: ["path", "content"],
-    properties: {
-      path: { type: "string" },
-      content: { type: "string" },
-      encoding: { type: "string", default: "utf8" },
-      createParents: { type: "boolean", default: false },
-    },
-  },
   annotations: {
     readOnlyHint: false,
     destructiveHint: true,
@@ -150,28 +121,4 @@ export const writeFileDefinition: ToolDefinition = {
     }
     return writeFile(args, config.cwd);
   },
-};
-
-export const listDirTool: ToolMetadata = {
-  name: listDirDefinition.name,
-  title: listDirDefinition.title,
-  description: listDirDefinition.description,
-  inputSchema: listDirDefinition.jsonSchema,
-  annotations: listDirDefinition.annotations,
-};
-
-export const readFileTool: ToolMetadata = {
-  name: readFileDefinition.name,
-  title: readFileDefinition.title,
-  description: readFileDefinition.description,
-  inputSchema: readFileDefinition.jsonSchema,
-  annotations: readFileDefinition.annotations,
-};
-
-export const writeFileTool: ToolMetadata = {
-  name: writeFileDefinition.name,
-  title: writeFileDefinition.title,
-  description: writeFileDefinition.description,
-  inputSchema: writeFileDefinition.jsonSchema,
-  annotations: writeFileDefinition.annotations,
 };

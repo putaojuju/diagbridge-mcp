@@ -1,5 +1,6 @@
-import type { BridgeConfig, ToolMetadata, ToolName } from "../config.ts";
-import type { ToolDefinition } from "../config.ts";
+import * as z from "zod/v4";
+import type { BridgeConfig, ToolName } from "../config.ts";
+import type { ToolDefinition, ToolMetadata } from "./types.ts";
 import { systemInfoDefinition } from "../tools/system-info.ts";
 import { listDirDefinition, readFileDefinition, writeFileDefinition } from "../tools/file-tools.ts";
 import { runCommandDefinition } from "../tools/command.ts";
@@ -7,7 +8,7 @@ import { driveInventoryDefinition } from "../tools/drive-inventory.ts";
 import { junkCandidatesDefinition } from "../tools/junk-candidates.ts";
 import { windowsEventSummaryDefinition } from "../tools/windows-events.ts";
 
-export type { ToolDefinition };
+export type { ToolDefinition, ToolMetadata };
 
 export const TOOL_REGISTRY: Record<ToolName, ToolDefinition> = {
   system_info: systemInfoDefinition,
@@ -31,11 +32,12 @@ export function getToolMetadata(enabledTools?: readonly ToolName[]): ToolMetadat
     if (!tool) {
       throw new Error(`Tool definition not found for: ${name}`);
     }
+    const generatedJsonSchema = z.object(tool.zodSchema).toJSONSchema() as Record<string, unknown>;
     return {
       name: tool.name,
       title: tool.title,
       description: tool.description,
-      inputSchema: tool.jsonSchema,
+      inputSchema: generatedJsonSchema,
       annotations: tool.annotations,
     };
   });

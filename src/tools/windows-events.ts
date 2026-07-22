@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import * as z from "zod/v4";
-import type { BridgeConfig, ToolDefinition, ToolMetadata } from "../config.ts";
+import type { ToolDefinition } from "../mcp/types.ts";
 
 export interface WindowsEventSummaryEntry {
   timeCreated: string;
@@ -227,27 +227,10 @@ export const windowsEventSummaryDefinition: ToolDefinition = {
     logs: z.array(z.enum(["Application", "System"])).optional(),
     maxEvents: z.number().int().min(1).max(500).optional(),
   },
-  jsonSchema: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      sinceDays: { type: "number", default: 14 },
-      logs: { type: "array", items: { type: "string" }, default: ["Application", "System"] },
-      maxEvents: { type: "number", default: 200 },
-    },
-  },
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
     openWorldHint: false,
   },
   handler: async (args) => windowsEventSummary(args),
-};
-
-export const windowsEventSummaryTool: ToolMetadata = {
-  name: windowsEventSummaryDefinition.name,
-  title: windowsEventSummaryDefinition.title,
-  description: windowsEventSummaryDefinition.description,
-  inputSchema: windowsEventSummaryDefinition.jsonSchema,
-  annotations: windowsEventSummaryDefinition.annotations,
 };

@@ -60,15 +60,16 @@ async function main(): Promise<void> {
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: undefined,
         });
-        // Streamable HTTP transport ALWAYS uses fixed REMOTE_MCP_TOOL_NAMES
         const mcpServer = createDiagBridgeMcpServer(config, audit, REMOTE_MCP_TOOL_NAMES);
 
         let cleanedUp = false;
         const cleanup = () => {
           if (!cleanedUp) {
             cleanedUp = true;
-            void transport.close();
-            void mcpServer.close();
+            Promise.allSettled([
+              transport.close(),
+              mcpServer.close(),
+            ]).catch(() => {});
           }
         };
 
