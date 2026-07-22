@@ -24,6 +24,8 @@ import { checkAndExpireSession, createSession, createStoppedSession, isRemoteMcp
 import { listDir, readFile, resolveBridgePath } from "./tools/file-tools.ts";
 import { createUiServer, getCandidateEndpoints } from "./ui/server.ts";
 import { CloudflareTunnel, parseTunnelUrl } from "./tunnel/cloudflared.ts";
+import { cleanOldBuilds } from "./utils/clean-builds.ts";
+
 
 
 
@@ -779,4 +781,21 @@ test("Portable process smoke test executes bundled node.exe and diagbridge.mjs w
     child.kill("SIGKILL");
     await new Promise((r) => setTimeout(r, 300));
   }
+});
+
+test("cleanOldBuilds deletes existing old ZIP archives in release directory", async () => {
+  const releaseDir = join(process.cwd(), "release");
+  const dummyOldZip = join(releaseDir, "DiagBridge-Portable-v0.0.0-old.zip");
+  const { mkdirSync, writeFileSync: writeSync } = await import("node:fs");
+
+  if (!existsSync(releaseDir)) {
+    mkdirSync(releaseDir, { recursive: true });
+  }
+
+  writeSync(dummyOldZip, "dummy old zip content", "utf8");
+  assert.ok(existsSync(dummyOldZip), "Dummy old zip file must exist before cleanup");
+
+  cleanOldBuilds();
+
+  assert.equal(existsSync(dummyOldZip), false, "Old zip file must be deleted by cleanOldBuilds()");
 });

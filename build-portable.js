@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { get } from "node:https";
 import { join } from "node:path";
 
@@ -90,24 +90,8 @@ async function verifyOrDownloadBinary(name, url, expectedSha256, cachePath) {
   }
 }
 
-function cleanOldBuilds() {
-  console.log("Cleaning old release build directories...");
-  rmSync(join("release", "DiagBridge-Portable"), { recursive: true, force: true });
+import { cleanOldBuilds } from "./src/utils/clean-builds.ts";
 
-
-  const releaseDir = join("release");
-  if (existsSync(releaseDir)) {
-    try {
-      const { readdirSync } = require("node:fs");
-      const files = readdirSync(releaseDir);
-      for (const file of files) {
-        if (file.endsWith(".zip")) {
-          rmSync(join(releaseDir, file), { force: true });
-        }
-      }
-    } catch (_) {}
-  }
-}
 
 function generateThirdPartyNotices() {
   let lockJson = {};
@@ -143,6 +127,50 @@ function generateThirdPartyNotices() {
   }
 
   return notices.join("\n");
+}
+
+function generateTroubleshootingContent() {
+  return `DiagBridge Portable 私测版 - 常见故障排查指南 v${DIAGBRIDGE_VERSION}
+==================================================
+
+1. 页面没有自动打开
+   - 原因：Windows 默认浏览器响应较慢或被拦截。
+   - 解决：请手动打开浏览器，在地址栏输入访问：http://127.0.0.1:8790
+
+2. Tunnel 建立超时
+   - 原因：本地网络波动或连接 Cloudflare Quick Tunnel 延迟过高。
+   - 解决：在页面上点击“⏹ 结束诊断”，稍等 3 秒后再次点击“▶ 开始诊断”重新建立隧道。
+
+3. 公司网络阻止 Cloudflare
+   - 原因：企业防火墙屏蔽了 trycloudflare.com 域名。
+   - 解决：可以改用“局域网连接地址”（格式为 http://192.168.x.x:8787/mcp）。要求远程工程师与待诊断电脑处于同一局域网或 VPN 内。
+
+4. 防火墙提示如何处理
+   - 原因：Windows 防火墙首次对本地 Node 端口绑定发起安全询问。
+   - 解决：点击“允许访问”（仅勾选“专用网络”即可）。DiagBridge 本地控制面板仅绑定 127.0.0.1。
+
+5. 如何彻底结束诊断
+   - 方法一：在控制面板页面点击“⏹ 结束诊断”按钮；
+   - 方法二：直接关闭“启动 DiagBridge.cmd”命令行黑框窗口。
+   - 结束诊断后，当前 Token 及公网 HTTPS 隧道立即永久失效。
+
+6. 如何检查是否还有 node.exe / cloudflared.exe 残留
+   - 按下 Ctrl + Shift + Esc 打开“任务管理器”；
+   - 在“详细信息”页签中查找是否还有名为 node.exe 或 cloudflared.exe 的进程；
+   - 如有残留，右键点击“结束任务”即可。
+`;
+}
+
+function generateReleaseNotesContent() {
+  return `DiagBridge Portable 私测版 Release Notes (v${DIAGBRIDGE_VERSION})
+==================================================
+
+【本版本更新重点】
+1. 绿色免安装单文件打包：无需安装 Node.js、Git 或 npm，解压即用。
+2. 自动化 HTTPS 通道导出：内置 Cloudflare Quick Tunnel，一键生成安全的远程诊断凭据。
+3. 严格只读诊断工具箱：仅开放 system_info, drive_inventory, junk_candidates, windows_event_summary 4个只读工具。
+4. 绝对安全防线：屏蔽任意命令执行、文件读取与文件写入，Token 单次生成、自动到期并实时注销。
+`;
 }
 
 async function buildPortable() {
@@ -198,6 +226,10 @@ pause
   // Create THIRD_PARTY_NOTICES.txt
   writeFileSync(join(releaseDir, "THIRD_PARTY_NOTICES.txt"), generateThirdPartyNotices(), "utf8");
 
+  // Create 故障排查.txt inside releaseDir
+  const troubleContent = generateTroubleshootingContent();
+  writeFileSync(join(releaseDir, "故障排查.txt"), troubleContent, "utf8");
+
   // Create 使用说明.txt
   const readmeContent = `DiagBridge 绿色免安装诊断工具包 v${DIAGBRIDGE_VERSION} - 使用说明
 ==================================================
@@ -222,6 +254,7 @@ Windows 10 / 11 64位系统 (无需安装 Node.js、Git 或 npm)。
 【安全防护说明】
 - 远程仅开放 system_info, drive_inventory, junk_candidates, windows_event_summary 4个只读工具。
 - 文件写入、读取及任意命令执行均已被彻底屏蔽。
+- 详见同目录下的《故障排查.txt》。
 `;
   writeFileSync(join(releaseDir, "使用说明.txt"), readmeContent, "utf8");
 
@@ -247,10 +280,24 @@ Windows 10 / 11 64位系统 (无需安装 Node.js、Git 或 npm)。
     console.warn(`Zip archive creation failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  console.log(`✅ Portable package generated successfully at: ${releaseDir}`);
+  // Generate SHA-256 for the ZIP archive
+  if (existsSync(zipPath)) {
+    const zipHash = sha256(zipPath);
+    const sha256FilePath = `${zipPath}.sha256`;
+    writeFileSync(sha256FilePath, `${zipHash}  DiagBridge-Portable-v${DIAGBRIDGE_VERSION}.zip\n`, "utf8");
+    console.log(`🔑 SHA-256 checksum generated: ${sha256FilePath} (${zipHash})`);
+  }
+
+  // Generate Release Notes & Standalone Troubleshooting doc in release/
+  writeFileSync(join("release", `release-notes-v${DIAGBRIDGE_VERSION}.txt`), generateReleaseNotesContent(), "utf8");
+  writeFileSync(join("release", `故障排查-v${DIAGBRIDGE_VERSION}.txt`), troubleContent, "utf8");
+
+  console.log(`✅ Portable private beta package generated successfully at: ${releaseDir}`);
 }
 
-buildPortable().catch((err) => {
-  console.error("Failed to build portable package:", err);
-  process.exit(1);
-});
+if (process.argv[1] && process.argv[1].endsWith("build-portable.js")) {
+  buildPortable().catch((err) => {
+    console.error("Failed to build portable package:", err);
+    process.exit(1);
+  });
+}
