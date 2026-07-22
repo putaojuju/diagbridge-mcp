@@ -2,6 +2,10 @@
 
 This guide describes how to run and connect to the DiagBridge Remote Streamable HTTP MCP transport.
 
+> **Runtime Requirements**:
+> Requires Node.js 22.6 or newer.
+> Tested on Node.js 24.
+
 The Streamable HTTP transport allows remote MCP clients (such as ChatGPT, Codex Plugin, or other HTTP MCP hosts) to connect to DiagBridge securely.
 
 ## 1. Quick Start
@@ -40,10 +44,10 @@ X-DiagBridge-Session-Token: <token>
 
 For short-lived localhost Inspector testing, launch the server in dev no-auth mode:
 
-### PowerShell
+### Windows PowerShell
 
 ```powershell
-$env:DIAGBRIDGE_REMOTE_DEV_NO_AUTH="1"
+$env:DIAGBRIDGE_REMOTE_DEV_NO_AUTH = "1"
 npm run dev:remote-mcp
 ```
 
@@ -52,6 +56,12 @@ npm run dev:remote-mcp
 ```bat
 set DIAGBRIDGE_REMOTE_DEV_NO_AUTH=1
 npm run dev:remote-mcp
+```
+
+### Linux / macOS Bash
+
+```bash
+DIAGBRIDGE_REMOTE_DEV_NO_AUTH=1 npm run dev:remote-mcp
 ```
 
 Then test with MCP Inspector:
@@ -85,7 +95,17 @@ https://<your-subdomain>.ngrok-free.app/mcp
 cloudflared tunnel --url http://127.0.0.1:8787
 ```
 
-## 4. Remote MCP Tool Whitelist
+## 4. Deprecated Environment Variable Compatibility
+
+For backward compatibility, the following historical environment variables are supported as one-version deprecated aliases:
+
+- `DIAGBRIDGE_HTTP_HOST` $\rightarrow$ use `DIAGBRIDGE_REMOTE_HOST` instead
+- `DIAGBRIDGE_HTTP_PORT` $\rightarrow$ use `DIAGBRIDGE_REMOTE_PORT` instead
+- `DIAGBRIDGE_HTTP_DEV_NO_AUTH` $\rightarrow$ use `DIAGBRIDGE_REMOTE_DEV_NO_AUTH` instead
+
+Using these legacy variables will emit a deprecation warning at startup.
+
+## 5. Remote MCP Tool Whitelist
 
 The Remote Streamable HTTP transport is strictly limited to 4 read-only diagnostic tools:
 

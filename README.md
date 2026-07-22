@@ -6,15 +6,20 @@ It exposes one shared tool registry through:
 - `stdio` for local MCP clients (Codex, Claude Code, Cursor, etc.)
 - `Streamable HTTP` for remote MCP clients (ChatGPT, Codex Plugin, remote agents, etc.)
 
+> **Runtime Requirements**:
+> Requires Node.js 22.6 or newer.
+> Tested on Node.js 24.
+
 中文：
 > DiagBridge MCP 是面向可信本地和远程 AI Agent 的通用 Windows MCP 桥。
 > 它通过 stdio 和 Streamable HTTP 暴露同一套工具。
 
 ## Transports
 
-| Entry point | Script | Purpose |
+| Entry point | Command / Script | Purpose |
 | --- | --- | --- |
-| Stdio MCP server | `npm run dev:mcp` | Local MCP host integration over stdio (`src/mcp/transports/stdio.ts`). |
+| Stdio MCP server (MCP Host) | `node --experimental-strip-types <path>/src/mcp/transports/stdio.ts` | Production integration for MCP hosts over stdio. |
+| Stdio MCP server (Manual Dev) | `npm run dev:mcp` | Manual CLI developer testing. |
 | Streamable HTTP MCP transport | `npm run dev:remote-mcp` | Remote MCP client integration over Streamable HTTP (`src/mcp/transports/streamable-http.ts`). |
 
 ## Tools Overview
@@ -48,12 +53,12 @@ Environment variables:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `DIAGBRIDGE_HOST` | `127.0.0.1` | Default host address. |
-| `DIAGBRIDGE_REMOTE_HOST` | `127.0.0.1` | Bind address for Streamable HTTP server. |
+| `DIAGBRIDGE_REMOTE_HOST` | `127.0.0.1` | Bind address for Streamable HTTP server (`DIAGBRIDGE_HTTP_HOST` supported for 1-version deprecated compatibility). |
 | `DIAGBRIDGE_PORT` | `8787` | Default port number. |
-| `DIAGBRIDGE_REMOTE_PORT` | `8787` | Streamable HTTP server port. |
+| `DIAGBRIDGE_REMOTE_PORT` | `8787` | Streamable HTTP server port (`DIAGBRIDGE_HTTP_PORT` supported for 1-version deprecated compatibility). |
 | `DIAGBRIDGE_SESSION_TOKEN` | generated at startup | Session token for authenticating HTTP requests. |
-| `DIAGBRIDGE_MCP_TOOLS` | read-only local tools | Comma-separated enabled tools for local stdio transport. |
-| `DIAGBRIDGE_REMOTE_DEV_NO_AUTH` | `0` | Enable `1` for temporary localhost Inspector testing without token authentication. |
+| `DIAGBRIDGE_MCP_TOOLS` | read-only local tools | Comma-separated enabled tools for local stdio transport (`DIAGBRIDGE_TOOLS` supported for 1-version deprecated compatibility). |
+| `DIAGBRIDGE_REMOTE_DEV_NO_AUTH` | `0` | Enable `1` for temporary localhost Inspector testing without token authentication (`DIAGBRIDGE_HTTP_DEV_NO_AUTH` supported for 1-version deprecated compatibility). |
 | `DIAGBRIDGE_CWD` | current directory | Base working directory. |
 | `DIAGBRIDGE_AUDIT_LOG` | `.diagbridge-audit.jsonl` | JSONL audit log file path. |
 
@@ -63,9 +68,6 @@ Environment variables:
 npm install
 npm run check
 npm test
-
-# Launch local stdio server
-npm run dev:mcp
 
 # Launch remote Streamable HTTP server
 npm run dev:remote-mcp

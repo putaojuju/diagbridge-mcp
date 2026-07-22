@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { AuditLog } from "../audit.ts";
-import type { BridgeConfig, ToolName } from "../config.ts";
+import { VERSION, type BridgeConfig, type ToolName } from "../config.ts";
 import { getToolDefinition } from "./tool-registry.ts";
 
 export function createDiagBridgeMcpServer(
@@ -10,7 +10,7 @@ export function createDiagBridgeMcpServer(
 ): McpServer {
   const server = new McpServer({
     name: "diagbridge-mcp",
-    version: "0.2.1",
+    version: VERSION,
   });
 
   for (const toolName of enabledTools) {

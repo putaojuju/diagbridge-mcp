@@ -1,3 +1,4 @@
+export const VERSION = "0.2.1";
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 8787;
 export const DEFAULT_REMOTE_MCP_PORT = 8787;

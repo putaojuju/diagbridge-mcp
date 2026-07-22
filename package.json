@@ -4,6 +4,9 @@
   "private": true,
   "description": "General Windows MCP bridge for trusted local and remote AI agents.",
   "type": "module",
+  "engines": {
+    "node": ">=22.6.0"
+  },
   "scripts": {
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "node --experimental-strip-types src/bridge.test.ts",

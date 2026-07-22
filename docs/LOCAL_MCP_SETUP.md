@@ -2,6 +2,10 @@
 
 DiagBridge MCP provides a stdio transport for trusted local AI agents and MCP hosts such as Codex, Claude Code, Cursor, and similar tools.
 
+> **Runtime Requirements**:
+> Requires Node.js 22.6 or newer.
+> Tested on Node.js 24.
+
 ## 1. Quick Start
 
 ### Build / Type Check
@@ -12,25 +16,20 @@ npm run check
 npm test
 ```
 
-### Run Stdio MCP Server
+### Manual Developer Testing (CLI)
 
 ```bash
 npm run dev:mcp
 ```
 
-Or invoke directly with Node:
+> [!NOTE]
+> `npm run dev:mcp` is for manual developer CLI testing only. Do not use `npm` in MCP host configurations because `npm` output may contaminate JSON-RPC stdout protocol traffic.
 
-```bash
-node --experimental-strip-types src/mcp/transports/stdio.ts
-```
+## 2. MCP Host Configuration (Codex / Claude Code / Cursor)
 
-## 2. Supported Local MCP Hosts
+MCP Hosts **must** invoke `node` directly with the absolute path to `stdio.ts`:
 
-### Codex / Claude Code / Cursor
-
-Configure the MCP client settings to launch DiagBridge as a stdio server process.
-
-Example `claude_desktop_config.json` / Cursor MCP config:
+Example configuration:
 
 ```json
 {
@@ -63,8 +62,17 @@ By default, the local stdio transport enables 6 read-only diagnostic tools:
 
 To opt in to `write_file` or `run_command` in a trusted local session, set `DIAGBRIDGE_MCP_TOOLS`:
 
+### Windows PowerShell
+
+```powershell
+$env:DIAGBRIDGE_MCP_TOOLS = "system_info,list_dir,read_file,drive_inventory,junk_candidates,windows_event_summary,write_file,run_command"
+node --experimental-strip-types E:\diagbridge-mcp\src\mcp\transports\stdio.ts
+```
+
+### Linux / macOS Bash
+
 ```bash
-DIAGBRIDGE_MCP_TOOLS=system_info,list_dir,read_file,drive_inventory,junk_candidates,windows_event_summary,write_file,run_command npm run dev:mcp
+DIAGBRIDGE_MCP_TOOLS=system_info,list_dir,read_file,drive_inventory,junk_candidates,windows_event_summary,write_file,run_command node --experimental-strip-types ./src/mcp/transports/stdio.ts
 ```
 
 > [!WARNING]
